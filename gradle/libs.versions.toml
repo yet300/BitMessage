@@ -1,0 +1,163 @@
+[versions]
+agp = "9.3.1"
+kotlin = "2.4.10"
+metro = "1.4.1"
+
+android-compileSdk = "37"
+android-minSdk = "24"
+android-targetSdk = "36"
+
+gms-location = "21.4.0"
+core-ktx = "1.19.0"
+androidx-activity = "1.13.0"
+androidx-lifecycle = "2.11.0"
+
+composeMultiplatform = "1.11.1"
+material3 = "1.11.0-alpha07"
+coil = "3.5.0"
+
+decompose = "3.5.0"
+essenty = "2.5.0"
+mvi = "4.4.0"
+
+kermit = "2.1.0"
+ksafe = "3.0.0"
+grant = "2.3.0"
+compass = "3.2.0"
+kompress = "2.3.1"                # karmakrafts Kompress — pure-Kotlin KMP DEFLATE (RFC1951 raw), iOS-wire compatible
+artitor = "0.1.2"                 # io.github.yet300:tor — KMP Arti/Tor wrapper
+qrose = "1.1.2"
+
+#crypto
+cryptography-kotlin = "0.6.0"     # whyoleg/cryptography-kotlin (SHA/HMAC/HKDF/PBKDF2/AES-GCM/Ed25519/random)
+secp256k1 = "0.23.0"              # ACINQ secp256k1-kmp (Nostr secp256k1 + BIP-340 Schnorr + ECDH)
+
+# JSON
+kotlinx-serialization = "1.11.0"
+
+# Coroutines
+kotlinx-coroutines = "1.11.0"
+kotlinxDatetime = "0.8.0"
+kotlinxIo = "0.9.1"
+
+# Ktor (HTTP + WebSocket client; OkHttp engine honors the Arti SOCKS proxy)
+ktor = "3.5.2"
+
+#test
+turbine = "1.2.1"
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+compose-uiTooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "composeMultiplatform" }
+androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
+compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+ksafe = { module = "eu.anifantakis:ksafe", version.ref = "ksafe" }
+kompress-core = { module = "dev.karmakrafts.kompress:kompress-core", version.ref = "kompress" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
+
+# Grant — KMP runtime permissions (headless, commonMain)
+grant-core = { module = "dev.brewkits:grant-core", version.ref = "grant" }
+grant-motion = { module = "dev.brewkits:grant-motion", version.ref = "grant" }
+grant-bluetooth = { module = "dev.brewkits:grant-bluetooth", version.ref = "grant" }
+grant-location-always = { module = "dev.brewkits:grant-location-always", version.ref = "grant" }
+
+# KMP cryptography
+cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography-kotlin" }
+cryptography-provider-jdk-bc = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk-bc", version.ref = "cryptography-kotlin" }
+cryptography-provider-apple = { module = "dev.whyoleg.cryptography:cryptography-provider-apple", version.ref = "cryptography-kotlin" }
+
+# ACINQ secp256k1
+secp256k1-kmp = { module = "fr.acinq.secp256k1:secp256k1-kmp", version.ref = "secp256k1" }
+secp256k1-jni-android = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1" }
+secp256k1-jni-jvm = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm", version.ref = "secp256k1" }
+
+# Compass — KMP geocoder (mobile artifact = platform Geocoder/CLGeocoder for forward geocoding)
+compass-geocoder = { module = "dev.jordond.compass:geocoder", version.ref = "compass" }
+compass-geocoder-mobile = { module = "dev.jordond.compass:geocoder-mobile", version.ref = "compass" }
+
+# JSON
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
+
+# Coroutines
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines"}
+
+
+# Ktor (multiplatform HTTP + WebSocket client; OkHttp engine for SOCKS/Tor support)
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+artitor = { module = "io.github.yet300:tor", version.ref = "artitor" }
+
+gms-location = { module = "com.google.android.gms:play-services-location", version.ref = "gms-location" }
+
+#decompose
+decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
+decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+decompose-compose-experimental = { module = "com.arkivanov.decompose:extensions-compose-experimental", version.ref = "decompose" }
+essenty-lifecycle = { group = "com.arkivanov.essenty", name = "lifecycle", version.ref = "essenty" }
+essenty-stateKeeper = { group = "com.arkivanov.essenty", name = "state-keeper", version.ref = "essenty" }
+essenty-instanceKeeper = { group = "com.arkivanov.essenty", name = "instance-keeper", version.ref = "essenty" }
+essenty-backHandler = { group = "com.arkivanov.essenty", name = "back-handler", version.ref = "essenty" }
+
+#mvi-kotlin
+mvikotlin = { group = "com.arkivanov.mvikotlin", name = "mvikotlin", version.ref = "mvi" }
+mvikotlin-main = { group = "com.arkivanov.mvikotlin", name = "mvikotlin-main", version.ref = "mvi" }
+mvikotlin-logging = { group = "com.arkivanov.mvikotlin", name = "mvikotlin-logging", version.ref = "mvi" }
+mvikotlin-timetravel = { group = "com.arkivanov.mvikotlin", name = "mvikotlin-timetravel", version.ref = "mvi" }
+mvikotlin-extensions-coroutines = { group = "com.arkivanov.mvikotlin", name = "mvikotlin-extensions-coroutines", version.ref = "mvi" }
+
+# Testing
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-annotations = { module = "org.jetbrains.kotlin:kotlin-test-annotations-common", version.ref = "kotlin" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+
+#build
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+
+[bundles]
+decompose = [
+    "decompose",
+    "essenty-lifecycle",
+    "essenty-stateKeeper",
+    "essenty-instanceKeeper",
+    "essenty-backHandler"
+]
+mvi = [
+    "mvikotlin",
+    "mvikotlin-main",
+    "mvikotlin-logging",
+    "mvikotlin-timetravel",
+    "mvikotlin-extensions-coroutines"
+]
+testing = [
+    "kotlin-test",
+    "kotlin-test-annotations",
+    "kotlinx-coroutines-test",
+    "turbine",
+]
+
+[plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
+
+local-kotlin-multiplatform = { id = "com.plugins.kotlinMultiplatformPlugin", version = "unspecified" }
