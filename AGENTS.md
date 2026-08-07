@@ -25,7 +25,8 @@ BitMessage/
 ├── sharedUI/                   Compose UI; currently configured for Android
 ├── sharedLogic/                Android/iOS shared application logic
 ├── core/
-│   └── common/                 Reusable Android/iOS common utilities
+│   ├── common/                 Reusable Android/iOS common utilities
+│   └── testing/                Phase 1 compatibility fixtures and test harnesses
 ├── build-logic/
 │   └── convention/             Local Gradle convention plugins
 ├── gradle/
@@ -44,6 +45,7 @@ BitMessage/
 | `:sharedUI` | Compose presentation code and resources | Currently Android only; depends on `:sharedLogic` |
 | `:sharedLogic` | Logic shared by Android and iOS and exported as `SharedLogic` | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:common` |
 | `:core:common` | Reusable multiplatform utilities and infrastructure | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin |
+| `:core:testing` | Test-only compatibility fixture models, loaders, and validation gates | Android, iOS ARM64, iOS Simulator ARM64; neutral fixture resources are consumed by tests only |
 | `build-logic:convention` | Shared Gradle configuration for multiplatform modules | Included build, not application runtime code |
 
 Current dependency direction:
@@ -51,6 +53,7 @@ Current dependency direction:
 ```text
 androidApp -> sharedUI -> sharedLogic -> core:common
 iosApp ----------------> sharedLogic -> core:common
+compatibility fixtures -----------> core:testing (test infrastructure only)
 ```
 
 Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Lower-level modules must not import application entry points or UI modules.
@@ -128,6 +131,9 @@ Run commands from the repository root with the checked-in Gradle wrapper.
 ./gradlew :sharedLogic:allTests
 ./gradlew :sharedUI:allTests
 
+# Run the Phase 1 fixture suite and fail if no compatibility test executes
+./gradlew :core:testing:compatibilityCheck
+
 # Link the shared framework for the iOS simulator
 ./gradlew :sharedLogic:linkDebugFrameworkIosSimulatorArm64
 
@@ -139,7 +145,7 @@ Run the narrowest relevant task first. For iOS application UI or signing changes
 
 ## Known Baseline Issues
 
-As of 2026-08-07, all three module `allTests` tasks pass, but `:androidApp:assembleDebug` fails at `:androidApp:processDebugMainManifest`. The version catalog sets `android-minSdk` to 24, while the transitive Android artifact `dev.brewkits:grant-core-android:2.3.0` (declared through `:core:common`) requires minSdk 26. Treat this as a pre-existing configuration decision that needs explicit resolution; do not hide it with a manifest override or claim the Android build is green.
+As of 2026-08-07, the version catalog sets `android-minSdk` to 26 and the documented Android/iOS framework build baseline is green. Before Phase 1, the existing module `allTests` tasks were `NO-SOURCE`; `:core:testing:compatibilityCheck` is the first gate that requires a non-zero executed test count. Do not claim other modules have test coverage until their own source sets contain executed tests.
 
 ## Change Discipline
 

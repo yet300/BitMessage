@@ -1,0 +1,1569 @@
+{
+  "formatVersion": 1,
+  "profile": "BitchatBaseline2026_08",
+  "fixtures": [
+    {
+      "id": "apple-v1-broadcast",
+      "description": "Pinned Apple upstream literal apple-v1-broadcast.",
+      "category": "OUTER_PACKET",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-v1-broadcast",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "010203010203040506070800000200112233445566774142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "1"
+        },
+        {
+          "id": "type",
+          "value": "0x02"
+        },
+        {
+          "id": "recipient",
+          "value": "broadcast"
+        },
+        {
+          "id": "payload",
+          "value": "4142"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/protocol/src/androidHostTest/kotlin/com/app/transport/protocol/BinaryProtocolGoldenTest.kt",
+        "sourceTest": "plain v1/v2 semantic candidate",
+        "promotionDecision": "PROMOTED_AFTER_CURRENT_VALIDATION"
+      },
+      "contentSha256": "aaec35e1a4e3835f0da8a4221c7f09d40a39ce1d991d8e3e60ca725a9d2f6376",
+      "notes": "Historical semantics were regenerated; historical bytes were not copied."
+    },
+    {
+      "id": "apple-v1-recipient",
+      "description": "Pinned Apple upstream literal apple-v1-recipient.",
+      "category": "OUTER_PACKET",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-v1-recipient",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "010203010203040506070801000200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "1"
+        },
+        {
+          "id": "recipient",
+          "value": "8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "b5ff70d64f371b9ac3e5a1dd86d2a566b890862667fbfc3c89111e19cf20aaa2",
+      "notes": "Reciprocally accepted by pinned Android."
+    },
+    {
+      "id": "apple-v2-broadcast",
+      "description": "Pinned Apple upstream literal apple-v2-broadcast.",
+      "category": "OUTER_PACKET",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-v2-broadcast",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708000000000200112233445566774142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "2"
+        },
+        {
+          "id": "recipient",
+          "value": "broadcast"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "7662705e39f0364a568809c0f9825da0e1f87ef0f1392677dae3bd3e0a799852",
+      "notes": "Reciprocally accepted by pinned Android."
+    },
+    {
+      "id": "apple-v2-recipient",
+      "description": "Pinned Apple upstream literal apple-v2-recipient.",
+      "category": "OUTER_PACKET",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-v2-recipient",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708010000000200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "2"
+        },
+        {
+          "id": "recipient",
+          "value": "8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "efbd5b814b2fe546845d21dc2b1166dfefe466f9a47af6b653b0ed4dc7dd7191",
+      "notes": "Reciprocally accepted by pinned Android."
+    },
+    {
+      "id": "apple-v2-route",
+      "description": "Pinned Apple upstream literal apple-v2-route.",
+      "category": "OUTER_PACKET",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-v2-route",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708090000000200112233445566778899aabbccddeeff0200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "routeCount",
+          "value": "2"
+        },
+        {
+          "id": "route",
+          "value": "0011223344556677,8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "observedRouteCount",
+          "value": "2"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "a46128bb999fce40c03d76a9b0d4ff997b397cc27fec5285792499aba5424bec",
+      "notes": "Reciprocally accepted by pinned Android."
+    },
+    {
+      "id": "apple-announce-legacy",
+      "description": "Pinned Apple legacy announcement literal.",
+      "category": "ANNOUNCEMENT",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "bitchat/Protocols/Packets.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-announce-legacy",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "0104706565720220111111111111111111111111111111111111111111111111111111111111111103202222222222222222222222222222222222222222222222222222222222222222",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "nickname",
+          "value": "peer"
+        },
+        {
+          "id": "capabilities",
+          "value": "absent"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "9c8bb548a6bf40918b29a24cecb51739502ee2f20612060854edefcb98765c7f",
+      "notes": "Reciprocally accepted by pinned Android."
+    },
+    {
+      "id": "apple-announce-extended",
+      "description": "Pinned Apple extended announcement literal.",
+      "category": "CAPABILITIES",
+      "direction": "APPLE_TO_ANDROID",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "bitchat/Protocols/Packets.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: apple-announce-extended",
+        "producer": "APPLE",
+        "acceptedBy": [
+          "APPLE",
+          "ANDROID"
+        ]
+      },
+      "wireBytesHex": "01047065657202201111111111111111111111111111111111111111111111111111111111111111032022222222222222222222222222222222222222222222222222222222222222220408010203040506070805020081",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "directNeighborRaw",
+          "value": "0102030405060708"
+        },
+        {
+          "id": "capabilitiesRaw",
+          "value": "0x8100"
+        },
+        {
+          "id": "tlvOrder",
+          "value": "0x04,0x05"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "85364d5c7782d701481cfcd118276c96e9b26a8550384591f4bcaca70b8b459d",
+      "notes": "Raw neighbor-before-capabilities TLV order is preserved and was accepted by pinned Android."
+    },
+    {
+      "id": "android-v1-broadcast",
+      "description": "Pinned Android upstream literal android-v1-broadcast.",
+      "category": "OUTER_PACKET",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-v1-broadcast",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "010203010203040506070800000200112233445566774142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "1"
+        },
+        {
+          "id": "type",
+          "value": "0x02"
+        },
+        {
+          "id": "recipient",
+          "value": "broadcast"
+        },
+        {
+          "id": "payload",
+          "value": "4142"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/protocol/src/androidHostTest/kotlin/com/app/transport/protocol/BinaryProtocolGoldenTest.kt",
+        "sourceTest": "plain v1/v2 semantic candidate",
+        "promotionDecision": "PROMOTED_AFTER_CURRENT_VALIDATION"
+      },
+      "contentSha256": "2fc177f9da3fa7721b541ed8ace85354712f78f3e16c89434f9e62196d1c7f39",
+      "notes": "Historical semantics were regenerated; historical bytes were not copied."
+    },
+    {
+      "id": "android-v1-recipient",
+      "description": "Pinned Android upstream literal android-v1-recipient.",
+      "category": "OUTER_PACKET",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-v1-recipient",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "010203010203040506070801000200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "1"
+        },
+        {
+          "id": "recipient",
+          "value": "8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "f87bbdb1f78cb519adef105249fb9c2d23c68d0927b7495a12e57015a2d8d143",
+      "notes": "Reciprocally accepted by pinned Apple."
+    },
+    {
+      "id": "android-v2-broadcast",
+      "description": "Pinned Android upstream literal android-v2-broadcast.",
+      "category": "OUTER_PACKET",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-v2-broadcast",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708000000000200112233445566774142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "2"
+        },
+        {
+          "id": "recipient",
+          "value": "broadcast"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "ffddd07ad71155030ea2f9734ade1d36bbe6542192e70ab2d866f3117523855d",
+      "notes": "Reciprocally accepted by pinned Apple."
+    },
+    {
+      "id": "android-v2-recipient",
+      "description": "Pinned Android upstream literal android-v2-recipient.",
+      "category": "OUTER_PACKET",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-v2-recipient",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708010000000200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "version",
+          "value": "2"
+        },
+        {
+          "id": "recipient",
+          "value": "8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "3367f8e4ab1fab01df396fa9701f430948264b0356e53ccde3ffb289fb46b6cd",
+      "notes": "Reciprocally accepted by pinned Apple."
+    },
+    {
+      "id": "android-v2-route",
+      "description": "Pinned Android upstream literal android-v2-route.",
+      "category": "OUTER_PACKET",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-v2-route",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "0202030102030405060708090000000200112233445566778899aabbccddeeff0200112233445566778899aabbccddeeff4142",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "routeCount",
+          "value": "2"
+        },
+        {
+          "id": "route",
+          "value": "0011223344556677,8899aabbccddeeff"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "observedRouteCount",
+          "value": "2"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "9e29c73abf0ce3a91f53cf745571f833c8d4d3f5ff205e5280e5d710693f7f19",
+      "notes": "Reciprocally accepted by pinned Apple."
+    },
+    {
+      "id": "android-announce-legacy",
+      "description": "Pinned Android legacy announcement literal.",
+      "category": "ANNOUNCEMENT",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/model/IdentityAnnouncement.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-announce-legacy",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "0104706565720220111111111111111111111111111111111111111111111111111111111111111103202222222222222222222222222222222222222222222222222222222222222222",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "nickname",
+          "value": "peer"
+        },
+        {
+          "id": "capabilities",
+          "value": "absent"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "d370a176bd5e938e8ab86c3889d1c72b6bb2720405d6132438bf42e27c7c35e1",
+      "notes": "Reciprocally accepted by pinned Apple."
+    },
+    {
+      "id": "android-announce-extended",
+      "description": "Pinned Android extended announcement literal.",
+      "category": "CAPABILITIES",
+      "direction": "ANDROID_TO_APPLE",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/model/IdentityAnnouncement.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: android-announce-extended",
+        "producer": "ANDROID",
+        "acceptedBy": [
+          "ANDROID",
+          "APPLE"
+        ]
+      },
+      "wireBytesHex": "01047065657202201111111111111111111111111111111111111111111111111111111111111111032022222222222222222222222222222222222222222222222222222222222222220502008104080102030405060708",
+      "expectedOutcome": {
+        "status": "ACCEPT"
+      },
+      "semanticFields": [
+        {
+          "id": "directNeighborRaw",
+          "value": "0102030405060708"
+        },
+        {
+          "id": "capabilitiesRaw",
+          "value": "0x8100"
+        },
+        {
+          "id": "tlvOrder",
+          "value": "0x05,0x04"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "536ae494385ac41768273a97b39e0e8b3ef36b2e8d276312ae35f148e5084072",
+      "notes": "Raw capabilities-before-neighbor TLV order is preserved and was accepted by pinned Apple."
+    },
+    {
+      "id": "malformed-empty-input",
+      "description": "Empty decoder input.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-empty-input",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "EMPTY_INPUT"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "86af60788f6f9a7077c1db5d228a88e149c8d7822947af84fff4f515983b4c5d",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-truncated-header",
+      "description": "Truncated fixed header.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-truncated-header",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "020203010203",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "TRUNCATED_HEADER"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "9e6a09386795b0d70b4489e769077e426d6e575a102535e50961acf257c2a73d",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-unsupported-version",
+      "description": "Unsupported outer version 3.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-unsupported-version",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0302030102030405060708000000000200112233445566774142",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "UNSUPPORTED_VERSION"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "83c5d898cc78175e2dcfacdd69f37578662749bd5b41e443b5f17313db906971",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-truncated-sender",
+      "description": "Fewer than eight sender bytes.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-truncated-sender",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "020203010203040506070800000000020011223344",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "TRUNCATED_SENDER"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "e906647f9964096d69e24ffe871957abcf17b0dc7804d207f44f6b77a68fa63f",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-truncated-recipient",
+      "description": "Recipient flag with four recipient bytes.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-truncated-recipient",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0202030102030405060708010000000200112233445566778899aabb",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "TRUNCATED_RECIPIENT"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "653bdae9b550b717cb4cecdfe3e233700818bca637e54a9701063eef4fb409cd",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-invalid-route-length",
+      "description": "Two route entries declared; one carried.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-invalid-route-length",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0202030102030405060708090000000200112233445566778899aabbccddeeff020011223344556677",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "INVALID_ROUTE_LENGTH"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "c0538f81d65417f87f7f0a8d941db10df17d242524d282655f38b912e150e4de",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-oversized-route",
+      "description": "Advertised route count 33 probes the absence of a jointly agreed security bound.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-oversized-route",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "02020301020304050607080800000000001122334455667721",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "advertisedRouteEntries",
+          "value": "33"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "The one-byte route count permits 255 entries and the pinned clients do not establish a jointly enforced lower security bound.",
+      "historicalProvenance": null,
+      "contentSha256": "6f4603b72b35d4179a8ad3b2564d7da567a15f384d7a7cecfb2366f98dabc4f3",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-payload-length-mismatch",
+      "description": "Three payload bytes declared; two carried.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-payload-length-mismatch",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0202030102030405060708000000000300112233445566774142",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "PAYLOAD_LENGTH_MISMATCH"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "67bb5b2b7c94d5d65de418122d2201ccbb0312296ef4115f79ffce78be7e31a2",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-oversized-advertised-payload",
+      "description": "Advertised payload exceeds bound.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-oversized-advertised-payload",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "020203010203040506070800010000010011223344556677",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "PAYLOAD_LIMIT_EXCEEDED"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "advertisedPayloadBytes",
+          "value": "16777217"
+        },
+        {
+          "id": "knownCeilingRelation",
+          "value": "exceeds-both-pinned-client-ceilings"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "a52c7f2399f82a745d81bc28b6b0bcba10ea95c089499aa8d6a5ac849244289e",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-invalid-padding",
+      "description": "Candidate invalid terminal padding length.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-invalid-padding",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "020203010203040506070810000000020011223344556677414200",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY",
+        "rejectCode": null
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Pinned decoders attempt raw packet decoding before unpadding and may accept trailing bytes; no jointly rejected invalid-padding literal has been established.",
+      "historicalProvenance": null,
+      "contentSha256": "cfd778f0b58d174d56b513e45d55d8079e1b391fd002b0d1aa17b23c2421c73c",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-compression-size-abuse",
+      "description": "Compressed expansion exceeds every documented ceiling.",
+      "category": "COMPRESSION",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-compression-size-abuse",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "020203010203040506070804000000080011223344556677789cedc1010100000080a0ffaf",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "DECOMPRESSION_LIMIT_EXCEEDED"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "hardDecompressedBytes",
+          "value": "greater-than-10485760"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "3521dd7765722f5f6a29f7d487d37f67b065d1e2aceac00402a691b7c14cad62",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-suspicious-compression-ratio",
+      "description": "Suspicious compressed expansion ratio.",
+      "category": "COMPRESSION",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-suspicious-compression-ratio",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0202030102030405060708040000000500112233445566770000c35100",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "SUSPICIOUS_COMPRESSION_RATIO"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "maxExpansionRatio",
+          "value": "50000:1"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "6dadd58a2a95df28e000261f6f9951a13c2a5845eeb18a929bd4013a8f6d129d",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-truncated-signature",
+      "description": "Signature flag with fewer than 64 bytes.",
+      "category": "SIGNING",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-truncated-signature",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0202030102030405060708020000000200112233445566774142aabb",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "TRUNCATED_SIGNATURE"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "6a4c724a8e3ebeb76a13f9875215e22d757e944b228a430d44d8daaccfa17546",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-unknown-message-type",
+      "description": "Unassigned outer message type candidate.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-unknown-message-type",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "02ff030102030405060708000000000200112233445566774142",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY",
+        "rejectCode": null
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Pinned outer decoders preserve arbitrary unsigned type bytes; dispatch rejection policy requires an explicit BitMessage protocol decision.",
+      "historicalProvenance": null,
+      "contentSha256": "3db91de5152049167e4be215a95151c20644eff4d5c928b026c2c4a9fa36433b",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-duplicate-tlv",
+      "description": "Duplicate nickname TLVs.",
+      "category": "ANNOUNCEMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/model/IdentityAnnouncement.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-duplicate-tlv",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "010161010162",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "DUPLICATE_TLV"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "4686e386ecc84b36da72c5eae01d1d2ce472f4cbe82bc3567229a688e0563020",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-fragment-metadata-mismatch",
+      "description": "Fragment set disagrees on total count.",
+      "category": "FRAGMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-fragment-metadata-mismatch",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0100000002000101000000030001",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "FRAGMENT_METADATA_MISMATCH"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "c2c4e46d9767f0d8d7decf007d828ee78eed7d3f2bc5207ae75cd5e7842429a5",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-fragment-count-abuse",
+      "description": "Abusive fragment count before allocation.",
+      "category": "FRAGMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-fragment-count-abuse",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "010000ffff0001",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "FRAGMENT_COUNT_LIMIT_EXCEEDED"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "candidateMaxFragmentCount",
+          "value": "256"
+        }
+      ],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "cc3e867c75b5065d5e8160569720e2b60dc1ede3225161a165bd220bf9624f10",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-sync-payload",
+      "description": "Truncated length-delimited sync filter.",
+      "category": "SYNC",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-sync-payload",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "010010aabb",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "MALFORMED_SYNC_PAYLOAD"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "ae6cc551b624ddb915201b98ad60224f7f211ec8bbde9625819770fffde07026",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-noise-payload",
+      "description": "Noise type byte without framed ciphertext.",
+      "category": "NOISE",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-noise-payload",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "01",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "MALFORMED_NOISE_PAYLOAD"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "b614ba480522f4e1248e46485fa5e870c70cf425a198e8b6e63ee09b6f27c545",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "malformed-nostr-envelope",
+      "description": "BitChat Nostr prefix with invalid content.",
+      "category": "NOSTR",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: malformed-nostr-envelope",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "62697463686174313a2a2a2a",
+      "expectedOutcome": {
+        "status": "REJECT",
+        "rejectCode": "MALFORMED_NOSTR_ENVELOPE"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "RESOLVED",
+      "blockedReason": null,
+      "historicalProvenance": null,
+      "contentSha256": "38382949b77a1f7c241e63c8829e77b16407ffbc937f95422f9e684cce7547d6",
+      "notes": "Independent hostile input derived from the pinned wire reader; no BitMessage codec produced it."
+    },
+    {
+      "id": "drift-unknown-tlv-preservation",
+      "description": "Unknown announcement TLV raw evidence.",
+      "category": "ANNOUNCEMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/model/IdentityAnnouncement.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-unknown-tlv-preservation",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "7e03a1b2c3",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "unknownTlvRaw",
+          "value": "7e03a1b2c3"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Pinned clients differ in preservation/exposure policy.",
+      "historicalProvenance": null,
+      "contentSha256": "d2aed9813d5bc88a0a0a831419b7ceda7cf2718473bf5702c0c02d0887b967a1",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-unknown-capability-preservation",
+      "description": "Unknown capability bit raw evidence.",
+      "category": "CAPABILITIES",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/model/IdentityAnnouncement.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-unknown-capability-preservation",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "05020081",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "capabilitiesRaw",
+          "value": "0x8100"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Negotiation and authorization policy for unknown bits is not decided.",
+      "historicalProvenance": null,
+      "contentSha256": "de996b04b3644580a7908cd2110148b5bcceb71a947317073acfb072447160c5",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-announce-v2-0x2c",
+      "description": "Reserved announce-v2 outer type 0x2C.",
+      "category": "ANNOUNCEMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "bitchat/Protocols/Packets.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-announce-v2-0x2c",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "022c03010203040506070800000000000011223344556677",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "outerType",
+          "value": "0x2c"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Pinned Android baseline parity for Apple type 0x2C is not established.",
+      "historicalProvenance": null,
+      "contentSha256": "b39567184daea166de6f5389e9defb99ecf78d5f1a062b9bdc7e03cd736054f6",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-authenticated-peer-state-0x21",
+      "description": "Authenticated peer-state Noise type 0x21.",
+      "category": "NOISE",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "bitchat/Protocols/Packets.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-authenticated-peer-state-0x21",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "2100",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "noiseInnerType",
+          "value": "0x21"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Historical enum lacks 0x21 and cross-client emission evidence is incomplete.",
+      "historicalProvenance": null,
+      "contentSha256": "9fb3793f5280b4f2144d91358ecfeca774268be3eb713628046d465592cdd7c9",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-peer-id-short",
+      "description": "Seven-byte peer identifier.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-peer-id-short",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "00112233445566",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "requiredPeerIdBytes",
+          "value": "8"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Clients differ between rejection and normalization.",
+      "historicalProvenance": null,
+      "contentSha256": "4c0e84a5caaa4940fe43dcaf509cb5a0b65feea59d1dbf8f03458c260ba891b3",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-peer-id-long",
+      "description": "Nine-byte peer identifier.",
+      "category": "MALFORMED",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-peer-id-long",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "001122334455667788",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "requiredPeerIdBytes",
+          "value": "8"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Clients differ between rejection and normalization.",
+      "historicalProvenance": null,
+      "contentSha256": "8766b40a0c49912d039066f559f39923c7f7fc5234746092527a66c033b8fe87",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-foreign-compressed-representation",
+      "description": "Foreign compressor representation.",
+      "category": "COMPRESSION",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-foreign-compressed-representation",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "789cf370f5f1f10700044c0175",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "rawCompressedRepresentation",
+          "value": "preserve-exact-wire-bytes"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "No neutral foreign-compressor/signature vector is accepted by both pinned clients.",
+      "historicalProvenance": null,
+      "contentSha256": "aaa459689352fb647bdc6d5988d22e27acf9475c5fae7e77d0d22ae2646082e8",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-decompression-cap-boundary",
+      "description": "Exact decompression-cap boundary.",
+      "category": "COMPRESSION",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "localPackages/BitFoundation/Sources/BitFoundation/BinaryProtocol.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-decompression-cap-boundary",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "789c030000000001",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "historicalCeilingBytes",
+          "value": "10485760"
+        },
+        {
+          "id": "boundary",
+          "value": "exactly-at-cap"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Pinned implementations do not agree on one exact cap or boundary inclusivity.",
+      "historicalProvenance": null,
+      "contentSha256": "bcbe1b7236df20aaea7b590949d577a74717d5850fa879c8adb66494d6359713",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-neighbor-encoding-ambiguity",
+      "description": "Disputed neighbor count/framing bytes.",
+      "category": "ANNOUNCEMENT",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat",
+        "sourceCommitSha": "1f59e814f90c3f489f48d68262cb1bf640bf6181",
+        "sourcePath": "bitchat/Protocols/Packets.swift",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-neighbor-encoding-ambiguity",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "0409010102030405060708",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Evidence does not settle whether the first value byte is a count in every version.",
+      "historicalProvenance": null,
+      "contentSha256": "a1b8ffd20ddb6fa1860de20b82947378ccf593f88916a41f5c6b51400c2e934b",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-gcs-signed-unsigned",
+      "description": "High-bit GCS hash input.",
+      "category": "SYNC",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "https://github.com/permissionlesstech/bitchat-android",
+        "sourceCommitSha": "094657efa0aabbb6f71c9050149d1d01aee96400",
+        "sourcePath": "app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-gcs-signed-unsigned",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "8000000000000001",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [
+        {
+          "id": "unsignedInput",
+          "value": "9223372036854775809"
+        }
+      ],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "No dual-upstream literal resolves signed Long versus UInt64 hash-to-range mapping.",
+      "historicalProvenance": null,
+      "contentSha256": "f30b5084905441bb8169b2a1350ef1e930d3d55917b51adaf06ad87d306a6aff",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-noise-message-three-48",
+      "description": "Disputed 48-byte Noise XX message-three shape.",
+      "category": "NOISE",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "core/crypto/src/commonTest/kotlin/com/app/crypto/noise/NoiseXxTranscriptGoldenTest.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-noise-message-three-48",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "candidateMessageThreeBytes",
+          "value": "48"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Historical constant says 48 while its transcript emits 64; no current KAT resolves it.",
+      "historicalProvenance": null,
+      "contentSha256": "e7a09721052da0988750ea06840628d24cf1fe52b99e24c6837cf0f86c60b872",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    },
+    {
+      "id": "drift-noise-message-three-64",
+      "description": "Disputed 64-byte Noise XX message-three shape.",
+      "category": "NOISE",
+      "direction": "DECODER_INPUT",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "core/crypto/src/commonTest/kotlin/com/app/crypto/noise/NoiseXxTranscriptGoldenTest.kt",
+        "sourceTest": "Phase 1 pinned harness or independent derivation: drift-noise-message-three-64",
+        "producer": "INDEPENDENT_AUDIT",
+        "acceptedBy": []
+      },
+      "wireBytesHex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expectedOutcome": {
+        "status": "DECODE_ONLY"
+      },
+      "semanticFields": [],
+      "signingTranscriptHex": null,
+      "signingTranscriptSha256": null,
+      "securityLimits": [
+        {
+          "id": "candidateMessageThreeBytes",
+          "value": "64"
+        }
+      ],
+      "decisionState": "BLOCKED_BY_PROTOCOL_DECISION",
+      "blockedReason": "Historical constant says 48 while its transcript emits 64; no current KAT resolves it.",
+      "historicalProvenance": null,
+      "contentSha256": "fb2aba91b193bbaee4aaca25c292acd1ed922e8b5f762e2047b4fc5a61c6af71",
+      "notes": "Evidence inventory only; this case must not define shipping semantics until the decision is resolved."
+    }
+  ]
+}

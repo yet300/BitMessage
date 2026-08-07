@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "profile": "BitchatBaseline2026_08",
+  "promoted": [
+    {
+      "id": "historical-plain-v1-v2-outer-packet-shapes",
+      "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+      "sourcePath": "transport/protocol/src/androidHostTest/kotlin/com/app/transport/protocol/BinaryProtocolGoldenTest.kt",
+      "reason": "The candidate semantics were regenerated independently by both pinned current upstream encoders and reciprocally accepted by the opposite decoder. Historical bytes were not copied."
+    }
+  ],
+  "rejected": [
+    {
+      "id": "historical-kompress-generated-packet-bytes",
+      "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+      "sourcePath": "transport/protocol/src/androidHostTest/kotlin/com/app/transport/protocol/BinaryProtocolGoldenTest.kt",
+      "reason": "Historical Kompress output is not neutral upstream evidence and decoding loses the foreign compressed representation needed for signed relays."
+    },
+    {
+      "id": "historical-noise-xx-transcript",
+      "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+      "sourcePath": "core/crypto/src/commonTest/kotlin/com/app/crypto/noise/NoiseXxTranscriptGoldenTest.kt",
+      "reason": "The historical message-three size constant conflicts with its 64-byte transcript; no pinned dual-upstream deterministic KAT was established in Phase 1."
+    },
+    {
+      "id": "historical-gcs-literals",
+      "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+      "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/sync/GCSFilterTest.kt",
+      "reason": "Signed Long versus UInt64 hash-to-range behavior remains unresolved and could silently define incompatible membership semantics."
+    }
+  ]
+}

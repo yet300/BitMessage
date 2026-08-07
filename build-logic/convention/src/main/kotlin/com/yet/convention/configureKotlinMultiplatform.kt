@@ -36,7 +36,9 @@ internal fun Project.configureKotlinMultiplatform(
             }
         }
         commonTest.dependencies {
-            implementation(libs.findBundle("testing").get())
+            implementation(kotlin("test"))
+            implementation(libs.findLibrary("kotlinx-coroutines-test").get())
+            implementation(libs.findLibrary("turbine").get())
         }
     }
 }

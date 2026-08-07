@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitmessage.local/schemas/historical-candidate-decision-v1.json",
+  "title": "Historical fixture candidate decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "profile", "promoted", "rejected"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "profile": { "type": "string", "minLength": 1 },
+    "promoted": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+    "rejected": { "type": "array", "items": { "$ref": "#/$defs/decision" } }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceCommitSha", "sourcePath", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sourceCommitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

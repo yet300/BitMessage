@@ -1,0 +1,108 @@
+{
+  "formatVersion": 1,
+  "profile": "BitchatBaseline2026_08",
+  "scenarios": [
+    {
+      "id": "dedup-authentication-before-authority-mutation",
+      "description": "Unauthenticated traffic must not mutate authenticated dedup authority.",
+      "targetPhase": "4",
+      "status": "DEFERRED_UNTIL_PRODUCTION_COMPONENT_EXISTS",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/mesh/SecurityManagerTest.kt",
+        "sourceTest": "Phase 0.4 admission-order audit; newly discovered forged-then-valid regression"
+      },
+      "given": [
+        "a signed-required packet identity whose canonical packet identifier is stable",
+        "a forged packet followed by the valid packet with the same dedup identity"
+      ],
+      "when": [
+        "the forged packet fails authentication",
+        "the valid packet subsequently enters admission"
+      ],
+      "then": [
+        "the forged packet does not enter authenticated dedup authority",
+        "the valid packet is admitted exactly once"
+      ]
+    },
+    {
+      "id": "identity-peer-id-change-same-authenticated-identity",
+      "description": "A peer-ID change must not create a new authenticated identity or contact.",
+      "targetPhase": "7",
+      "status": "DEFERRED_UNTIL_PRODUCTION_COMPONENT_EXISTS",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/mesh/PeerManagerTest.kt",
+        "sourceTest": "Phase 0.4 identity/trust separation audit"
+      },
+      "given": [
+        "one AuthenticatedIdentityId and one ContactId",
+        "an old PeerId and a newly announced PeerId bound by valid authenticated evidence"
+      ],
+      "when": ["the peer rotates or replaces its ephemeral PeerId"],
+      "then": [
+        "the PeerId binding changes",
+        "AuthenticatedIdentityId and ContactId remain stable",
+        "the old PeerId is retained only as bounded historical evidence"
+      ]
+    },
+    {
+      "id": "identity-reconnect-new-link-same-peer",
+      "description": "Reconnect creates a new link fact without duplicating peer, identity, or contact authority.",
+      "targetPhase": "6",
+      "status": "DEFERRED_UNTIL_PRODUCTION_COMPONENT_EXISTS",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/mesh/PeerManagerTest.kt",
+        "sourceTest": "Phase 0.4 link/session mapping audit"
+      },
+      "given": ["an authenticated peer observed on LinkId A"],
+      "when": ["LinkId A disconnects and the same peer reconnects on LinkId B"],
+      "then": [
+        "LinkId B is distinct from LinkId A",
+        "PeerId, AuthenticatedIdentityId, and ContactId are not reconstructed from the link identifier"
+      ]
+    },
+    {
+      "id": "identity-multiple-links-one-authenticated-identity",
+      "description": "Multiple simultaneous links may provide evidence for one identity without becoming identity keys.",
+      "targetPhase": "6",
+      "status": "DEFERRED_UNTIL_PRODUCTION_COMPONENT_EXISTS",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/mesh/PeerManagerTest.kt",
+        "sourceTest": "Phase 0.4 redundant-link and identity audit"
+      },
+      "given": ["LinkId A and LinkId B both authenticate to one static identity"],
+      "when": ["both links are active"],
+      "then": [
+        "two LinkId records remain observable",
+        "one AuthenticatedIdentityId is authoritative",
+        "routing policy can choose a link without rewriting identity or contact state"
+      ]
+    },
+    {
+      "id": "identity-future-static-key-rotation",
+      "description": "Future static-key rotation must require explicit authenticated evidence and must not be inferred from peer or link churn.",
+      "targetPhase": "7",
+      "status": "DEFERRED_UNTIL_PRODUCTION_COMPONENT_EXISTS",
+      "provenance": {
+        "sourceRepository": "/Users/yet/development/projects/bitchat",
+        "sourceCommitSha": "10feab049becf4140c8bf10e0d9428c89222840f",
+        "sourcePath": "transport/mesh/src/androidHostTest/kotlin/com/app/transport/mesh/PeerManagerTest.kt",
+        "sourceTest": "Phase 0.4 future rotation requirement"
+      },
+      "given": ["a ContactId bound to an existing AuthenticatedIdentityId"],
+      "when": ["a new static identity claims continuity"],
+      "then": [
+        "LinkId and PeerId changes alone cannot authorize rotation",
+        "the new AuthenticatedIdentityId remains separate until continuity evidence is verified",
+        "ContactId continuity follows explicit product policy"
+      ]
+    }
+  ]
+}

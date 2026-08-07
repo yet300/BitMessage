@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitmessage.local/schemas/compatibility-fixture-v1.json",
+  "title": "BitMessage compatibility fixture manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "profile", "fixtures"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "profile": { "type": "string", "minLength": 1 },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fixture" }
+    }
+  },
+  "$defs": {
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "description", "category", "direction", "provenance",
+        "wireBytesHex", "expectedOutcome", "semanticFields", "signingTranscriptHex",
+        "signingTranscriptSha256", "securityLimits", "contentSha256", "notes"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "category": {
+          "enum": ["OUTER_PACKET", "ANNOUNCEMENT", "CAPABILITIES", "SIGNING", "COMPRESSION", "FRAGMENT", "SYNC", "NOISE", "NOSTR", "MALFORMED"]
+        },
+        "direction": { "enum": ["APPLE_TO_ANDROID", "ANDROID_TO_APPLE", "BIDIRECTIONAL", "DECODER_INPUT"] },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "wireBytesHex": { "type": "string", "pattern": "^(?:[0-9a-f]{2})*$" },
+        "expectedOutcome": { "$ref": "#/$defs/outcome" },
+        "semanticFields": {
+          "type": "array",
+          "default": [],
+          "items": { "$ref": "#/$defs/keyValue" }
+        },
+        "signingTranscriptHex": { "type": ["string", "null"], "pattern": "^(?:[0-9a-f]{2})*$" },
+        "signingTranscriptSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "securityLimits": {
+          "type": "array",
+          "default": [],
+          "items": { "$ref": "#/$defs/keyValue" }
+        },
+        "decisionState": { "enum": ["RESOLVED", "BLOCKED_BY_PROTOCOL_DECISION"], "default": "RESOLVED" },
+        "blockedReason": { "type": ["string", "null"] },
+        "historicalProvenance": { "oneOf": [{ "$ref": "#/$defs/historicalProvenance" }, { "type": "null" }] },
+        "contentSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "notes": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRepository", "sourceCommitSha", "sourcePath", "sourceTest", "producer"],
+      "properties": {
+        "sourceRepository": { "type": "string", "minLength": 1 },
+        "sourceCommitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceTest": { "type": "string", "minLength": 1 },
+        "producer": { "enum": ["APPLE", "ANDROID", "INDEPENDENT_AUDIT"] },
+        "acceptedBy": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["APPLE", "ANDROID"] }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["ACCEPT", "REJECT", "DECODE_ONLY"] },
+        "rejectCode": {
+          "type": ["string", "null"],
+          "enum": [null, "EMPTY_INPUT", "TRUNCATED_HEADER", "UNSUPPORTED_VERSION", "TRUNCATED_SENDER", "TRUNCATED_RECIPIENT", "INVALID_ROUTE_LENGTH", "ROUTE_LIMIT_EXCEEDED", "PAYLOAD_LENGTH_MISMATCH", "PAYLOAD_LIMIT_EXCEEDED", "INVALID_PADDING", "DECOMPRESSION_LIMIT_EXCEEDED", "SUSPICIOUS_COMPRESSION_RATIO", "TRUNCATED_SIGNATURE", "UNKNOWN_MESSAGE_TYPE", "MALFORMED_TLV", "DUPLICATE_TLV", "INVALID_PEER_ID_LENGTH", "FRAGMENT_METADATA_MISMATCH", "FRAGMENT_COUNT_LIMIT_EXCEEDED", "MALFORMED_SYNC_PAYLOAD", "MALFORMED_NOISE_PAYLOAD", "MALFORMED_NOSTR_ENVELOPE"]
+        }
+      }
+    },
+    "keyValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "value"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      }
+    },
+    "historicalProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRepository", "sourceCommitSha", "sourcePath", "sourceTest", "promotionDecision"],
+      "properties": {
+        "sourceRepository": { "type": "string", "minLength": 1 },
+        "sourceCommitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceTest": { "type": "string", "minLength": 1 },
+        "promotionDecision": { "enum": ["PROMOTED_AFTER_CURRENT_VALIDATION", "REJECTED"] }
+      }
+    }
+  }
+}
