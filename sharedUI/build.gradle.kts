@@ -46,6 +46,10 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
 
             implementation(libs.androidx.lifecycle.runtimeCompose)
+
+
+            implementation(libs.bundles.decompose)
+            implementation(libs.decompose.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

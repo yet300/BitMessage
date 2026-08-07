@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.metro)
 }
 
 kotlin {
@@ -14,6 +15,7 @@ dependencies {
     implementation(projects.sharedUI)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.decompose)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)

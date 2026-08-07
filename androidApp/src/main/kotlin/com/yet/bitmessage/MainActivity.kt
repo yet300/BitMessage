@@ -6,14 +6,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.arkivanov.decompose.defaultComponentContext
+import com.yet.bitmessage.di.BitApp
+import com.yet.bitmessage.feature.root.PreviewRootComponent
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        val appGraph = (application as BitApp).appGraph
+        val rootComponent = appGraph.rootFactory.create(
+            componentContext = defaultComponentContext()
+        )
+
         setContent {
-            App()
+            App(component = rootComponent)
         }
     }
 }
@@ -21,5 +29,5 @@ class MainActivity : ComponentActivity() {
 @Preview
 @Composable
 fun AppAndroidPreview() {
-    App()
+    App(component = PreviewRootComponent())
 }

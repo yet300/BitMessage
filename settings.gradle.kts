@@ -36,3 +36,6 @@ include(":sharedUI")
 
 include(":core")
 include(":core:common")
+
+include(":feature")
+include(":feature:root")

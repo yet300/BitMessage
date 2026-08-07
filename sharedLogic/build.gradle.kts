@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
+    alias(libs.plugins.metro)
 }
 
 kotlin {
@@ -13,6 +14,10 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "SharedLogic"
             isStatic = true
+
+            export(projects.feature.root)
+
+            export(libs.bundles.decompose)
         }
     }
     
@@ -35,6 +40,11 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(projects.core.common)
+
+            api(projects.feature.root)
+
+
+            api(libs.bundles.decompose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
