@@ -6,6 +6,10 @@ plugins {
 
 kotlin {
     sourceSets {
+        commonMain.dependencies {
+            implementation(projects.core.foundation)
+        }
+
         androidHostTest {
             resources.srcDir(rootProject.layout.projectDirectory.dir("compatibility"))
         }

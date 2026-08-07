@@ -36,6 +36,8 @@ include(":sharedUI")
 
 include(":core")
 include(":core:common")
+include(":core:foundation")
+include(":core:model")
 include(":core:testing")
 
 include(":feature")

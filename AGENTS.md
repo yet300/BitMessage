@@ -26,6 +26,8 @@ BitMessage/
 ├── sharedLogic/                Android/iOS shared application logic
 ├── core/
 │   ├── common/                 Reusable Android/iOS common utilities
+│   ├── foundation/             Lowest-level multiplatform building blocks
+│   ├── model/                  Typed kernel models
 │   └── testing/                Phase 1 compatibility fixtures and test harnesses
 ├── build-logic/
 │   └── convention/             Local Gradle convention plugins
@@ -45,7 +47,9 @@ BitMessage/
 | `:sharedUI` | Compose presentation code and resources | Currently Android only; depends on `:sharedLogic` |
 | `:sharedLogic` | Logic shared by Android and iOS and exported as `SharedLogic` | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:common` |
 | `:core:common` | Reusable multiplatform utilities and infrastructure | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin |
-| `:core:testing` | Test-only compatibility fixture models, loaders, and validation gates | Android, iOS ARM64, iOS Simulator ARM64; neutral fixture resources are consumed by tests only |
+| `:core:foundation` | Lowest-level multiplatform building blocks | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin with no project dependency |
+| `:core:model` | Typed kernel models | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` |
+| `:core:testing` | Test-only compatibility fixture models, loaders, and validation gates | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`; neutral fixture resources are consumed by tests only |
 | `build-logic:convention` | Shared Gradle configuration for multiplatform modules | Included build, not application runtime code |
 
 Current dependency direction:
@@ -53,10 +57,11 @@ Current dependency direction:
 ```text
 androidApp -> sharedUI -> sharedLogic -> core:common
 iosApp ----------------> sharedLogic -> core:common
-compatibility fixtures -----------> core:testing (test infrastructure only)
+core:model -----------------------> core:foundation
+compatibility fixtures -----------> core:testing -> core:foundation
 ```
 
-Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Lower-level modules must not import application entry points or UI modules.
+Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Production modules must not depend on `:core:testing`, and lower-level modules must not import application entry points or UI modules.
 
 ## Source Placement
 
@@ -65,6 +70,7 @@ Keep dependencies pointing inward along these paths unless a deliberate architec
 - Put iOS Kotlin integrations in `iosMain`; use `nativeMain` only when behavior genuinely applies to all configured native targets.
 - Put native SwiftUI and Apple application lifecycle code in `iosApp/iosApp`.
 - Keep Compose views and Compose resources in `sharedUI`. Despite its name, `sharedUI` is currently configured only as an Android KMP library; do not claim iOS Compose support until its targets and Xcode integration are added.
+- Put lowest-level portable building blocks in `core:foundation`; keep typed kernel models in `core:model`, which depends only on `core:foundation`.
 - Put broadly reusable, UI-independent primitives in `core:common`. Do not turn it into a dumping ground for feature-specific behavior.
 - Tests belong in the matching source set, normally `commonTest`, `androidHostTest`, or an iOS test source set.
 
