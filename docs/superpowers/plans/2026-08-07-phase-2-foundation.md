@@ -6,7 +6,7 @@
 
 **Architecture:** `:core:foundation` owns byte/time/scheduler/entropy/reducer primitives; `:core:model` owns only the currently stable `LinkId` and `PeerId`; `:core:testing` supplies deterministic fakes. Production modules do not depend on testing, and no Phase 3 protocol or Phase 7 identity semantics are added.
 
-**Tech Stack:** Kotlin Multiplatform 2.4, existing local KMP convention, `kotlinx-datetime`, `kotlin.test`.
+**Tech Stack:** Kotlin Multiplatform 2.4, existing local KMP convention, `kotlin.time`, `kotlin.test`.
 
 ---
 

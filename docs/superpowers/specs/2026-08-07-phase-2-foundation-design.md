@@ -32,7 +32,7 @@ Neither constructor truncates, pads, normalizes, decodes text, or embeds a BitCh
 
 ## Deterministic runtime contracts
 
-`WallClock` returns `kotlinx.datetime.Instant` for external/persisted time. `MonotonicClock` returns a `MonotonicTime` value that is process-local, must not be serialized as durable time, and is used only with `Duration` for elapsed-time calculations.
+`WallClock` returns `kotlin.time.Instant` for external/persisted time. `MonotonicClock` returns a `MonotonicTime` value that is process-local, must not be serialized as durable time, and is used only with `Duration` for elapsed-time calculations.
 
 Reducers express timer work with `ScheduleTimer(timerId, delay, generation)` and `CancelTimer(timerId)`. The corresponding callback is `TimerFired(timerId, generation)`. A future engine compares its own generation with the callback; the scheduler never assigns session meaning.
 
