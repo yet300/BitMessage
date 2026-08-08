@@ -42,6 +42,17 @@ iosApp ----------------> sharedLogic -> feature:root
 
 `sharedUI` is currently Android-only. `sharedLogic`, `feature:root`, and `core:common` target Android, iOS ARM64, and iOS Simulator ARM64. The iOS application is native SwiftUI and imports `SharedLogic`.
 
+### Implemented Phase 2 core
+
+Phase 2 added the following narrow core boundaries. They are not yet consumed by an application or protocol module:
+
+```text
+:core:model   -> :core:foundation
+:core:testing -> :core:foundation
+```
+
+`:core:testing` is test infrastructure only. No production module depends on it. `:core:foundation` and `:core:model` have executed Android-host and iOS Simulator KMP tests; this does not establish a native Swift source-test surface.
+
 ### Existing-code disposition
 
 | Area | Decision | Reason |
@@ -56,7 +67,7 @@ iosApp ----------------> sharedLogic -> feature:root
 | Permissions, dispatchers, logging, JSON config, hex, geohash helpers | ADAPT | Reuse when contracts fit; do not let utility types become domain owners. |
 | Protocol models/codecs | DELETE as a category | None exist in this repository. Add only from executable compatibility evidence. |
 | BLE, Noise, routing, persistence | DELETE as a category | None exist in this repository. There is no legacy implementation to preserve. |
-| Tests | DELETE as a claim | Existing test tasks are `NO-SOURCE`; buildable is not tested. Add real tests before behavior. |
+| Tests | ADAPT | Phase 1 compatibility and Phase 2 foundation/model/testing suites execute real tests; other pre-existing behavior modules may still be `NO-SOURCE`. Add real tests before behavior. |
 | BlueFalcon integration | DELETE as a category | Catalog availability is not integration. Introduce only behind the link adapter. |
 
 ### Historical donor repository
@@ -86,7 +97,9 @@ transport:* ────────────> transport:api, core:*
 crypto:noise ───────────> crypto:api, core:*, protocol:bitchat
 protocol:* ─────────────> core:foundation, core:model
 messenger:domain ───────> core:foundation, core:model
-core:* ─────────────────> Kotlin libraries only
+core:model ─────────────> core:foundation
+core:testing ───────────> core:foundation (test infrastructure only)
+core:foundation ────────> Kotlin libraries only
 ```
 
 `sharedLogic` becomes application/runtime composition and the Swift-facing facade. It must not become the dumping ground for domain or protocol implementation.
@@ -109,12 +122,14 @@ Every entry lists responsibility; allowed dependencies; forbidden dependencies; 
 
 | Module | Contract |
 |---|---|
-| `:core:foundation` | Bounded byte primitives, `WallClock`, `MonotonicClock`, entropy request/result types, scheduler identifiers, errors. Allowed: Kotlin stdlib, datetime/atomic primitives. Forbidden: messenger/protocol/UI. API: immutable primitives. Tests: property and boundary tests. Source sets: commonMain/commonTest. |
-| `:core:model` | Cross-cutting value classes such as `PeerId`, `MessageId`, `LinkId`, `AttemptId`, bounded byte values. Allowed: foundation and serialization only when necessary. Forbidden: protocols, storage, UI. API: validated values. Tests: construction, equality, serialization/Swift export. Source sets: commonMain/commonTest plus platform interop tests. |
-| `:core:testing` | Virtual clocks, deterministic scheduler, seeded entropy, trace assertions, fixture loaders. Allowed: core APIs and test libraries. Forbidden: production dependencies on this module. API: test harnesses. Tests: self-tests. Source sets: commonMain/commonTest; consumed only by test configurations and simulation. |
+| `:core:foundation` | Implemented portable kernel: immutable `Bytes`; `TimerId`, `CorrelationId`, and neutral `Generation`; `WallClock` returning `kotlin.time.Instant`; separate finite, non-durable `MonotonicTime`/`MonotonicClock`; `ScheduleTimer`/`CancelTimer`/`TimerFired` contracts; entropy request/result and `EntropySource` interface only; generic `Engine`/`Transition`; and typed, payload-excluding `TraceRecord` facts. Allowed: Kotlin libraries. Forbidden: messenger/protocol/UI and production scheduler or entropy implementations. Tests: executed common Android-host and iOS Simulator tests. Source sets: commonMain/commonTest. |
+| `:core:model` | Implemented validated values only: `LinkId` and protocol/transport-visible `PeerId`. `LinkId` and `PeerId` are distinct, have no conversion, and `PeerId` is not a durable user/contact or authenticated identity. Allowed: foundation. Forbidden: protocols, storage, UI, and identity/contact semantics. Tests: executed common Android-host and iOS Simulator tests. Source sets: commonMain/commonTest. |
+| `:core:testing` | Phase 1 compatibility fixtures/gate plus test-only virtual wall/monotonic time, deadline/sequence scheduler, and deterministic non-cryptographic seeded entropy. Allowed: foundation and test libraries. Forbidden: production dependencies on this module. Tests: executed Android-host and iOS Simulator tests. Source sets: commonMain/commonTest. |
 | `:messenger:domain` | Conversations, participants, contacts, messages, content, attempts, receipts, policies, and use-case/repository ports. Allowed: core. Forbidden: BitChat types, wire codecs, Metro, SQL, Bluetooth, UI. API: `Messenger`, repositories and use cases. Tests: pure domain invariants. Source sets: commonMain/commonTest. |
 
 Use `@JvmInline value class` for validated semantic identifiers where it materially prevents mixing values. Audit Swift export, serialization, nullable/generic boxing, and database adapters before committing each public type.
+
+`IdentityId`, authenticated identity, and `SessionGeneration` are deferred to Phase 7. Phase 2 deliberately introduces neither `IdentityId` nor `SessionGeneration`.
 
 ### Protocol and crypto
 
@@ -167,13 +182,15 @@ These rules should first be enforced through module dependencies and tests. Add 
 
 ## 7. Deterministic engine architecture
 
-Each engine is a pure reducer conceptually equivalent to:
+Phase 2 implements only the generic reducer kernel below. It has no production or product engine, effect executor, production scheduler or entropy provider, middleware, registry, runtime coordinator, persistence, or composition mechanism. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` remain in `:core:testing`:
 
 ```kotlin
 fun reduce(state: State, event: Event): Transition<State, Effect>
 ```
 
-The runtime serializes events, persists requested transitions, executes effects, and feeds typed results back as events. Time, entropy, key operations, storage, and transport are effects. Detailed contracts and traces are in `STATE_MACHINE_DESIGN.md`.
+`Transition` preserves ordered effects and typed `TraceRecord` values with defensive list ownership. `TraceRecord` permits only a validated transition name, optional `CorrelationId`, closed decision/size kinds, and nonnegative counts; its schema has no raw payload or free-form diagnostic field. Callers must provide only non-secret names and correlation IDs because those identifier strings are not sanitized by the generic type.
+
+The concrete engines and runtime described below are future architecture. A future runtime may serialize events, persist requested transitions, execute effects, and feed typed results back as events. Time, entropy, key operations, storage, and transport are future concrete effects. Detailed contracts and traces are in `STATE_MACHINE_DESIGN.md`.
 
 There is no giant application reducer:
 

@@ -1,6 +1,6 @@
 # BitMessage Implementation Plan
 
-Status: executable roadmap; Phase 0, Phase 0.4, and Phase 1 deliverables complete; Phase 2 not started  
+Status: executable roadmap; Phase 0, Phase 0.4, Phase 1, and Phase 2 deliverables complete; Phase 3 not started
 Baseline date: 2026-08-07  
 Rule: every task leaves the repository buildable, tested and reviewable. No big-bang migration.
 
@@ -43,7 +43,7 @@ Phases show dependency order, not a promise that all features ship in one releas
 | G7 Fuzz/property | 16 | Bounded codec/state-machine fuzz corpora, regression seeds, memory/time caps. |
 | G8 Physical release | 16 | Release-candidate only: Android↔Apple↔BitMessage device matrix. Not an ordinary PR gate. |
 
-Initial verification on 2026-08-07: G0 passes. Phase 1 added `:core:testing:compatibilityCheck`, which parses JUnit XML and fails unless its selected Android-host suite executes more than zero tests. The older behavior modules still have `NO-SOURCE` test targets; they are not declared compatibility behavior modules and remain future-phase work.
+Initial verification on 2026-08-07: G0 passes. Phase 1 added `:core:testing:compatibilityCheck`, which parses JUnit XML and fails unless its selected Android-host suite executes more than zero tests. At Phase 1 completion, older behavior modules still had `NO-SOURCE` test targets; Phase 2 subsequently added executed foundation/model/testing suites, while later behavior modules remain future-phase work.
 
 CI should use the repository's existing checks first. No CI configuration currently exists. Add one workflow only after the local commands are stable; do not add architecture-analysis tools merely to create activity.
 
@@ -147,7 +147,7 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 
 ## 4. Phase 1 — Compatibility baseline
 
-**Status: COMPLETE (2026-08-07).** Phase 1 established 46 checked-in fixtures, including 14 reciprocally accepted dual-upstream literals, 17 resolved hostile/reject cases, and 15 `BLOCKED_BY_PROTOCOL_DECISION` drift/security-limit cases. It also added five deferred regression scenarios, a pinned reproduction harness, and an offline CI gate. No production codec or Phase 2 module was started.
+**Status: COMPLETE (2026-08-07).** Phase 1 established 46 checked-in fixtures, including 14 reciprocally accepted dual-upstream literals, 17 resolved hostile/reject cases, and 15 `BLOCKED_BY_PROTOCOL_DECISION` drift/security-limit cases. It also added five deferred regression scenarios, a pinned reproduction harness, and an offline CI gate. At Phase 1 completion, no production codec or Phase 2 module had started; Phase 2 later added the independent foundation/model/testing kernel without changing this evidence.
 
 - **Goal:** turn upstream archaeology into executable, implementation-independent contracts.
 - **Scope:** protocol inventory, fixture manifest/schema, neutral literal fixtures, pinned upstream harness instructions, compatibility profiles and CI test discovery.
@@ -175,17 +175,19 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 
 ## 5. Phase 2 — Foundation
 
+**Status: COMPLETE (2026-08-07).** Phase 2 added only the validated deterministic kernel described here. No protocol/Phase 3 implementation has started.
+
 - **Goal:** provide deterministic, validated primitives before protocol code grows.
-- **Scope:** foundation/model/testing modules; identifiers; bounded bytes; wall/monotonic clocks; entropy/scheduler requests; reducer primitives; virtual runtime.
-- **Non-goals:** packet codecs, domain entities, transport or crypto implementation.
+- **Scope:** new `:core:foundation` and `:core:model`, plus the existing `:core:testing`; `Bytes`; `TimerId`, `CorrelationId`, and neutral `Generation`; wall/monotonic time contracts; scheduler and entropy contracts; generic reducer/transition/trace primitives; virtual runtime.
+- **Non-goals:** packet codecs, domain entities, transport or crypto implementation; `IdentityId`, authenticated identity, and `SessionGeneration` (all deferred to Phase 7); production scheduler or entropy provider; concrete engines/effect executors.
 - **Dependencies:** Phase 1 fixture conventions.
-- **Modules affected:** new `:core:foundation`, `:core:model`, `:core:testing`; adapt KMP convention and settings.
-- **Core types/interfaces:** semantic ID value classes, `Bytes`, `WallClock`, `MonotonicClock`, `TimerId`, `Transition`, `Engine`, seeded entropy and virtual scheduler.
+- **Modules affected:** `:core:model -> :core:foundation`; `:core:testing -> :core:foundation`. No production module depends on `:core:testing`.
+- **Core types/interfaces:** immutable `Bytes`; `TimerId`, `CorrelationId`, `Generation`; `WallClock` returning `kotlin.time.Instant`; finite non-durable `MonotonicTime`/`MonotonicClock`; `ScheduleTimer`/`CancelTimer`/`TimerFired`; entropy request/result plus `EntropySource` interface; `Engine`/`Transition`; and typed redacted trace facts.
 - **State owner:** scheduler owns virtual queue; values are immutable.
-- **Platform responsibilities:** production clock/secure-entropy adapters later; this phase supplies contracts and test implementations.
-- **Tests:** boundary/value semantics, Swift export smoke, virtual scheduling order, deterministic replay, cancellation.
+- **Platform responsibilities:** production clock/secure-entropy adapters later; this phase supplies contracts and test implementations only.
+- **Tests:** executed Android-host and iOS Simulator KMP tests for boundary/value semantics, virtual scheduling order, deterministic replay, cancellation, transition equality, and trace redaction. The verified `:sharedLogic:linkDebugFrameworkIosSimulatorArm64` task is a KMP interoperability smoke, not a native Swift source test.
 - **Compatibility gate:** byte values remain unsigned/exact and never normalize wire data implicitly.
-- **Completion criteria:** modules have no platform dependencies; tests execute on common/Android/iOS targets as applicable; G0–G3 pass.
+- **Completion criteria:** complete. The modules have no platform dependencies; selected tests execute on Android-host/iOS Simulator targets; G0–G3 checks pass.
 - **Risks:** excessive abstraction, inline-class Swift boxing, conflating wall and monotonic time.
 - **Rollback:** new modules are unreferenced by production; remove settings entries and modules.
 
@@ -193,10 +195,10 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 
 | ID | Goal and scope | Dependencies | Expected files/modules | Tests / green gate | Definition of Done |
 |---|---|---|---|---|---|
-| 2.1 | Add coarsely scoped foundation/model/testing modules and dependency rules. | 1.5 | settings, build logic, three modules | `projects`, G0/G1 | No circular/platform dependency. |
-| 2.2 | Add validated IDs and bounded byte primitives with explicit conversions. | 2.1 | core model/foundation | property, serialization and Swift export tests | Invalid sizes cannot enter engines. |
-| 2.3 | Add clock, scheduler and entropy contracts plus virtual implementations. | 2.1 | foundation/testing | ordered timer, stale generation and seeded replay tests | No sleeps/current-time reads in tests. |
-| 2.4 | Add reducer/transition/effect correlation primitives and trace redaction rules. | 2.2–2.3 | foundation/testing | replay and secret-redaction tests; G3 | Same input produces identical transition fingerprint. |
+| 2.1 | **Complete.** Add coarsely scoped foundation/model/testing modules and dependency rules. | 1.5 | settings, build logic, three modules | `projects`, G0/G1 | `:core:model -> :core:foundation` and `:core:testing -> :core:foundation`; no circular/platform dependency or production dependency on testing. |
+| 2.2 | **Complete.** Add validated IDs and bounded byte primitives with explicit conversions. | 2.1 | core model/foundation | Android-host/iOS Simulator value tests | `Bytes`, `TimerId`, `CorrelationId`, `Generation`, `LinkId`, and protocol-visible `PeerId` are validated; `LinkId` and `PeerId` have no conversion, and `PeerId` is not durable identity/contact state. |
+| 2.3 | **Complete.** Add clock, scheduler and entropy contracts plus virtual implementations. | 2.1 | foundation/testing | Android-host/iOS Simulator ordered timer, stale generation, cancellation, and seeded replay tests | No sleeps/current-time reads in tests; no production scheduler or entropy source. |
+| 2.4 | **Complete.** Add generic reducer/transition primitives and typed trace redaction rules. | 2.2–2.3 | foundation | Android-host/iOS Simulator replay, list-ownership, and trace-redaction tests; G3 | Same input produces equal transition state/effect order/trace; no production/product engine or effect executor was introduced. |
 
 ## 6. Phase 3 — BitChat wire protocol
 
@@ -641,14 +643,17 @@ A task is complete only when:
 9. feature availability and rollback switch are explicit;
 10. the architecture, compatibility and feature matrix documents are updated if their facts changed.
 
-## 24. First five implementation tasks
+## 24. Completed work and next task
 
-The completed Phase 1 sequence and next explicitly unstarted task are:
+The completed Phase 1 and Phase 2 sequence is:
 
 1. **1.1 — Fixture schema and provenance: complete.**
 2. **1.2 — Dual-upstream minimal literal packet/announce fixtures: complete.**
 3. **1.3 — Security-sensitive and malformed compatibility corpus: complete.**
 4. **1.4/1.5 — Pinned reproduction plus real-test/build CI gate: complete.**
-5. **2.1 — Foundation/model/testing module boundaries: not started.**
+5. **2.1 — Foundation/model/testing module boundaries: complete.**
+6. **2.2 — Validated IDs and bounded bytes: complete.**
+7. **2.3 — Time, scheduler, entropy contracts and virtual runtime: complete.**
+8. **2.4 — Generic reducer/transition and typed redacted trace kernel: complete.**
 
-Do not start codec task 3.1 until these are green. That ordering prevents the new implementation from defining its own compatibility target.
+**3.1 — BitChat wire model has not started.** Do not start it until the completed Phase 1 and Phase 2 gates are green. That ordering prevents the new implementation from defining its own compatibility target.

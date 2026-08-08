@@ -1,27 +1,29 @@
 # Deterministic State-Machine Design
 
-Status: normative design for future implementation  
-Scope: common protocol/runtime decisions; platform adapters remain effect executors.
+Status: Phase 2 generic kernel implemented; remaining concrete-engine design is future work
+Scope: Phase 2 reducer/trace contracts plus future common protocol/runtime decisions; platform adapters remain future effect executors.
 
 ## 1. Reducer contract
 
-An engine is a deterministic reducer:
+Phase 2 implements this generic reducer contract only:
 
 ```kotlin
 interface Engine<S : Any, E : Any, F : Any> {
     fun reduce(state: S, event: E): Transition<S, F>
 }
 
-data class Transition<S, F>(
+class Transition<S : Any, F : Any>(
     val state: S,
-    val effects: List<F> = emptyList(),
-    val trace: List<Decision> = emptyList(),
+    effects: List<F> = emptyList(),
+    trace: List<TraceRecord> = emptyList(),
 )
 ```
 
-Given identical initial state and ordered events, it produces identical state, effects and decisions. It performs no I/O, launches no coroutine, reads no clock, creates no random value, accesses no service locator and logs no secret. Validation precedes state allocation.
+`Transition` keeps private snapshots of its ordered effect and trace lists and returns fresh list views. `TraceRecord` contains only a validated transition name, optional `CorrelationId`, a closed `TraceDecision`, and closed `TraceSizeKind` facts with nonnegative counts. Its schema excludes byte/payload and free-form diagnostic fields. Callers must supply only non-secret transition names and correlation IDs; this generic type does not sanitize those identifier strings.
 
-State and events are immutable values. Effects carry correlation IDs. Every effect result returns as an event, including failure, timeout and cancellation. A reducer cannot assume an effect succeeded merely because it requested it.
+There is no Phase 2 production or product `Engine` implementation, public concrete effect type, executor, middleware, registry, plugin, composition root, persistence mechanism, coroutine runtime, production scheduler, or production entropy provider. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` are separate deterministic infrastructure. Given identical initial state and ordered events, a future engine implementation must produce identical state, effects and trace records; the generic kernel itself performs no I/O, clock/randomness read, or service lookup.
+
+The following state ownership and runtime material is the normative design for later concrete engines. It is not implemented by Phase 2.
 
 ## 2. State ownership
 
@@ -40,7 +42,7 @@ One state has one writer. Other engines receive facts as events or issue effects
 
 The runtime owns actors, scopes and ordering. An engine actor may own a mailbox and child scope only with explicit `start`, `stop`, `close`, restart and error policies. There are no launches in object initialization. Cancellation is never swallowed by broad exception handling.
 
-## 3. Runtime event loop
+## 3. Future runtime event loop
 
 ```text
 external callback / timer / recovery row
@@ -68,29 +70,31 @@ Rules:
 6. Cross-engine communication passes through a coordinator as typed events with causal/correlation IDs.
 7. Trace records contain IDs, transition names, sizes and reasons, never plaintext or key material.
 
-## 4. Time, scheduling and entropy
+## 4. Time, scheduling and entropy contracts
 
 ### Wall versus monotonic time
 
-`WallClock` supplies an instant only for wire timestamps, user-visible timestamps, persisted expiry and reconciliation against external events. Wall time may jump and must never drive in-process elapsed deadlines.
+Phase 2 exposes `WallClock.now(): kotlin.time.Instant` for external time and `MonotonicClock.now(): MonotonicTime` for elapsed time. `MonotonicTime` is finite, nonnegative, process-local, and non-durable. It must not be serialized or treated as wall time.
 
-`MonotonicClock` supplies a non-decreasing duration origin for handshake timeout, relay jitter deadlines, dedup age, fragment expiry, backoff and readiness timeout. Monotonic values are process-local and are not persisted as absolute values.
+Future protocol/runtime policy may use wall time for wire/user/persisted facts and monotonic time for elapsed deadlines. Wall time may jump and must never drive in-process elapsed deadlines.
 
-On persistence, store a wall deadline plus the policy inputs needed to recompute a new monotonic deadline after recovery. Clamp negative or excessive elapsed durations caused by wall-clock correction.
+Future persistence stores a wall deadline plus the policy inputs needed to recompute a monotonic deadline after recovery. It clamps negative or excessive elapsed durations caused by wall-clock correction.
 
 ### Scheduling
 
-The reducer emits `Schedule(timerId, delay, purpose)` and `CancelTimer(timerId)`. The scheduler returns `TimerFired(timerId, scheduledGeneration)`. Engines ignore stale generation IDs. Replacement is explicit and deterministic.
+Phase 2 defines `ScheduleTimer(timerId, delay, generation)`, `CancelTimer(timerId)`, and `TimerFired(timerId, generation)`. Delays are finite and nonnegative; the generation is preserved so a future engine can detect staleness. Phase 2 supplies no production scheduler.
 
-The production scheduler maps monotonic deadlines to coroutines/platform timers. The test scheduler is virtual: advancing time enqueues due timers in `(deadline, sequence)` order without sleeping.
+The test-only `VirtualScheduler` advances only when instructed, orders due timers by `(deadline, insertion sequence)`, suppresses cancellations, and replaces older pending entries for the same timer ID. It never sleeps or reads wall time.
 
 ### Randomness
 
-The reducer emits `RequestEntropy(requestId, byteCount, purpose)` or `RequestJitter(requestId, range)`. A cryptographic provider returns bytes; a deterministic test provider uses a declared seed. Random results become events and are retained in state if later transitions depend on them.
+Phase 2 defines only `EntropyRequest(correlationId, byteCount)`, `EntropyGenerated(correlationId, bytes)`, and the `EntropySource` interface. There is no production entropy provider. Test-only `SeededEntropy` is deterministic and non-cryptographic.
 
-No production security decision uses Kotlin `Random`. Simulator link faults use a separate seeded non-secret RNG so protocol entropy and fault scheduling cannot accidentally couple.
+No future production security decision uses Kotlin `Random`. A future simulator keeps fault scheduling separate from protocol entropy.
 
-## 5. Effects and persistence
+## 5. Future effects and persistence
+
+The representative effects and persistence mechanisms below are future architecture, not Phase 2 implementation.
 
 Representative effects:
 
