@@ -32,12 +32,18 @@ internal object V1Codec {
                 null
             }
 
-        if (flags.hasSignature || flags.isCompressed || flags.hasRoute || flags.hasPadding) {
+        if (flags.hasRoute || flags.hasPadding) {
             return DecodeResult.Failure(DecodeError.UNSUPPORTED_FEATURE)
         }
 
         val payload = reader.readExact(payloadLength).decodeOrNull()
             ?: return DecodeResult.Failure(DecodeError.INVALID_LENGTH)
+        val signature =
+            if (flags.hasSignature) {
+                reader.readExact(SIGNATURE_BYTES).decodeOrNull() ?: return truncated()
+            } else {
+                null
+            }
         if (reader.remaining != 0) return DecodeResult.Failure(DecodeError.INVALID_LENGTH)
 
         return DecodeResult.Success(
@@ -51,8 +57,9 @@ internal object V1Codec {
                 recipient = recipient,
                 route = null,
                 payload = payload,
-                signature = null,
+                signature = signature,
                 rawPacket = RawPacket(wireBytes),
+                compressionEnvelope = if (flags.isCompressed) CompressionEnvelope(payload) else null,
             ),
         )
     }
@@ -100,4 +107,5 @@ internal object V1Codec {
     private fun truncated(): DecodeResult.Failure = DecodeResult.Failure(DecodeError.TRUNCATED)
 
     private const val V1_HEADER_AND_SENDER_BYTES = 22
+    private const val SIGNATURE_BYTES = 64
 }

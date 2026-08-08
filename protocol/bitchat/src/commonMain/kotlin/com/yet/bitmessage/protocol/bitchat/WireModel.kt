@@ -105,6 +105,7 @@ data class DecodedPacket(
     val payload: Bytes,
     val signature: Bytes?,
     val rawPacket: RawPacket,
+    val compressionEnvelope: CompressionEnvelope? = null,
 )
 
 data class DecodeLimits(

@@ -32,7 +32,7 @@ internal object V2Codec {
                 null
             }
 
-        if (flags.hasSignature || flags.isCompressed || flags.hasPadding) {
+        if (flags.hasPadding) {
             return DecodeResult.Failure(DecodeError.UNSUPPORTED_FEATURE)
         }
 
@@ -54,6 +54,12 @@ internal object V2Codec {
 
         val payload = reader.readExact(advertisedPayloadLength.toInt()).decodeOrNull()
             ?: return DecodeResult.Failure(DecodeError.INVALID_LENGTH)
+        val signature =
+            if (flags.hasSignature) {
+                reader.readExact(SIGNATURE_BYTES).decodeOrNull() ?: return truncated()
+            } else {
+                null
+            }
         if (reader.remaining != 0) return DecodeResult.Failure(DecodeError.INVALID_LENGTH)
 
         return DecodeResult.Success(
@@ -67,8 +73,9 @@ internal object V2Codec {
                 recipient = recipient,
                 route = route,
                 payload = payload,
-                signature = null,
+                signature = signature,
                 rawPacket = RawPacket(wireBytes),
+                compressionEnvelope = if (flags.isCompressed) CompressionEnvelope(payload) else null,
             ),
         )
     }
@@ -129,4 +136,5 @@ internal object V2Codec {
 
     private const val V2_HEADER_AND_SENDER_BYTES = 24
     private const val ROUTE_COUNT_BYTES = 1
+    private const val SIGNATURE_BYTES = 64
 }
