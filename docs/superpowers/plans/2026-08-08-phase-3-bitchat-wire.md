@@ -4,6 +4,8 @@
 
 **Goal:** Add the smallest evidence-first, pure KMP `BitchatBaseline2026_08` codec without turning unresolved Phase 1 behavior into production policy.
 
+**Status:** Complete on 2026-08-08. The implementation stops at the evidence boundary: it executes 23 fixture outcomes, emits a deterministic 46-fixture production coverage report, and starts no Phase 4 code.
+
 **Architecture:** One `:protocol:bitchat` module owns immutable wire values, a bounded internal reader/writer, resolved outer-packet and announcement/capability codecs, and a profile-aware fixture-coverage report. It depends only on `:core:foundation` and `:core:model`; tests may consume `:core:testing`. Every decode either retains the exact raw input or returns a small typed failure.
 
 **Tech Stack:** Kotlin Multiplatform 2.4, existing local KMP convention, Kotlin unsigned primitives, `kotlin.test`, Phase 1 literal fixtures.
@@ -12,7 +14,7 @@
 
 ## Evidence boundary before implementation
 
-The Phase 1 corpus contains 46 fixtures. The initial production-codec coverage target is the ten resolved `OUTER_PACKET` accepts, two resolved announcement/capability accepts, and resolved structural rejects only where their flag/layout agrees with the outer-wire evidence. Every `DECODE_ONLY`, `BLOCKED_BY_PROTOCOL_DECISION`, Noise, Nostr, fragment/reassembly, GCS semantic, and unsupported payload fixture is recorded rather than guessed.
+The Phase 1 corpus contains 46 fixtures. The production-codec coverage target is the ten resolved `OUTER_PACKET` accepts, four resolved announcement/capability accepts, and nine resolved structural rejects where their flag/layout agrees with the codec evidence. Every `DECODE_ONLY`, `BLOCKED_BY_PROTOCOL_DECISION`, Noise, Nostr, fragment/reassembly, GCS semantic, and unsupported payload fixture is recorded rather than guessed.
 
 The first production coverage audit must explicitly identify corpus entries whose flag bits contradict the claimed reject reason (for example, compression cases marked with signature flags) or whose grammar is not established by a literal fixture. It must not change the fixture, expected outcome, hash, or Phase 1 gate.
 

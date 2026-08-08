@@ -54,6 +54,13 @@ class V2CodecTest {
     }
 
     @Test
+    fun v2RouteTailThatCannotSupplyTheAdvertisedEntriesIsAnInvalidLength() {
+        val invalidRouteLength = bytes("0202030102030405060708090000000200112233445566778899aabbccddeeff020011223344556677")
+
+        assertEquals(DecodeResult.Failure(DecodeError.INVALID_LENGTH), BitchatCodec.decode(invalidRouteLength))
+    }
+
+    @Test
     fun everyTruncatedV2RoutePrefixHasATypedFailure() {
         val full = v2Route.copyToByteArray()
 

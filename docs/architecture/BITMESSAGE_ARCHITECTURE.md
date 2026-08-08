@@ -65,9 +65,9 @@ Phase 2 added the following narrow core boundaries. They are not yet consumed by
 | MVIKotlin factory wiring | KEEP | Available presentation mechanism, not a domain runtime. |
 | `sharedUI` | ADAPT | Keep Android Compose presentation thin. Do not claim shared iOS Compose support. |
 | Permissions, dispatchers, logging, JSON config, hex, geohash helpers | ADAPT | Reuse when contracts fit; do not let utility types become domain owners. |
-| Protocol models/codecs | DELETE as a category | None exist in this repository. Add only from executable compatibility evidence. |
+| Protocol models/codecs | ADAPT | Phase 3 provides the narrow pure `:protocol:bitchat` codec from executable Phase 1 literals only; runtime policy, crypto, and product integration remain absent. |
 | BLE, Noise, routing, persistence | DELETE as a category | None exist in this repository. There is no legacy implementation to preserve. |
-| Tests | ADAPT | Phase 1 compatibility and Phase 2 foundation/model/testing suites execute real tests; other pre-existing behavior modules may still be `NO-SOURCE`. Add real tests before behavior. |
+| Tests | ADAPT | Phase 1 compatibility, Phase 2 foundation/model/testing, and Phase 3 protocol suites execute real tests; other pre-existing behavior modules may still be `NO-SOURCE`. Add real tests before behavior. |
 | BlueFalcon integration | DELETE as a category | Catalog availability is not integration. Introduce only behind the link adapter. |
 
 ### Historical donor repository
@@ -135,7 +135,7 @@ Use `@JvmInline value class` for validated semantic identifiers where it materia
 
 | Module | Contract |
 |---|---|
-| `:protocol:bitchat` | BitChat v1/v2 packet model, exact binary codecs, payload codecs, signing transcript, padding/compression policy, capability/profile negotiation, golden fixtures. Allowed: core. Forbidden: Bluetooth, crypto implementations, domain/UI. API: `BitChatCodec`, immutable wire values, `CompatibilityProfile`. Tests: literal Apple/Android golden vectors, malformed corpus, properties. Source sets: commonMain/commonTest. |
+| `:protocol:bitchat` | Implemented evidence-first BitChat slice: immutable v1/v2 public-message packet values, bounded binary codecs, resolved announcement TLVs, raw signing/compression retention, and the `BitchatBaseline2026_08` production coverage gate. Allowed: `:core:foundation`, `:core:model`; `:core:testing` only in test scope. Forbidden: Bluetooth, crypto implementations, domain/UI, padding policy, decompression, and runtime routing. API: `BitchatCodec`, immutable wire values, `BitchatBaseline2026_08`. Tests: literal Apple/Android vectors, bounded hostile inputs, Android-host coverage report plus common Android-host/iOS Simulator tests. Source sets: commonMain/commonTest/androidHostTest. |
 | `:protocol:nostr` | Nostr event/envelope representations and the deployed BitChat private envelope profile. Allowed: core and crypto API. Forbidden: websocket/Tor/UI. API: codecs and verification inputs. Tests: cross-client fixtures. Source sets: commonMain/commonTest. |
 | `:crypto:api` | Primitive requests/results, key handles, signing, verification, hashing, AEAD, Noise backend port. Private key bytes do not cross the port unless the primitive requires it and storage policy permits. Forbidden: messenger, UI, transport. Tests: known-answer contracts. Source sets: commonMain/commonTest. |
 | `:crypto:noise` | Deterministic Noise-session orchestration and BitChat payload wrapping; the crypto provider performs primitives. Allowed: crypto API, core, protocol. Forbidden: BLE/UI/database drivers. API: `NoiseSessionEngine`. Tests: Noise vectors, simultaneous open, replacement, timeout, stale generation. Source sets: commonMain/commonTest plus provider conformance tests. |

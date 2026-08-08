@@ -44,7 +44,8 @@ internal object V2Codec {
                 }
                 val entries = ArrayList<WirePeerId>(routeEntryCount)
                 repeat(routeEntryCount) {
-                    val entry = reader.readExact(WirePeerId.BYTE_SIZE).decodeOrNull()?.let(WirePeerId::of) ?: return truncated()
+                    val entry = reader.readExact(WirePeerId.BYTE_SIZE).decodeOrNull()?.let(WirePeerId::of)
+                        ?: return DecodeResult.Failure(DecodeError.INVALID_LENGTH)
                     entries += entry
                 }
                 WireRoute(entries)

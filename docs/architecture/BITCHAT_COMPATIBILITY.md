@@ -1,7 +1,7 @@
 # BitChat Compatibility Baseline
 
-Status: audit baseline; no BitMessage production codec exists yet  
-Analysis date: 2026-08-07  
+Status: Phase 1 audit baseline plus Phase 3 evidence-first codec; not protocol parity
+Analysis date: 2026-08-08
 Compatibility rule: executable cross-client evidence outranks prose and open proposals.
 
 ## 1. Pinned evidence
@@ -11,7 +11,7 @@ Compatibility rule: executable cross-client evidence outranks prose and open pro
 | [permissionlesstech/bitchat](https://github.com/permissionlesstech/bitchat) | `main` | `1f59e814f90c3f489f48d68262cb1bf640bf6181` | `2026-08-01T14:51:31+02:00` | Apple client; commit “Keyboard navigation (#1542)”; latest observed tag `v1.7.1`. |
 | [permissionlesstech/bitchat-android](https://github.com/permissionlesstech/bitchat-android) | `main` | `094657efa0aabbb6f71c9050149d1d01aee96400` | `2026-08-03T00:18:52+02:00` | Android client; merge of PR #861; latest observed tag `1.7.4`. |
 | [Reedyuk/blue-falcon](https://github.com/Reedyuk/blue-falcon) | `3.7.0` | `0338bb6b4ef6653179c5363946986ee838cd3c6f` | `2026-08-06T13:39:48+01:00` | Tag and `master` were identical on the audit date. |
-| Current BitMessage | `main` | `1e4b824` | local | Shell only; no BitChat wire implementation. |
+| Current BitMessage | `phase-1-compatibility-baseline` | Phase 3 evidence-first implementation | local | Pure `:protocol:bitchat` codec; no runtime engine or product integration. |
 | Historical donor | `bitMessage/main` | `10feab049becf4140c8bf10e0d9428c89222840f` | 2026-07-15 | Separate local repository; architecture is reference-only, with subsystem salvage governed by the [historical salvage audit](HISTORICAL_BITMESSAGE_SALVAGE.md). |
 
 The GitHub pull-request audit captured the most recently updated 100 PRs from each repository, including open, draft, merged and closed work. PR status in this document is as observed on 2026-08-07; refresh before adoption.
@@ -93,7 +93,7 @@ Signing excludes mutable TTL by constructing a canonical transcript with fixed T
 
 ### Capability field
 
-Announcement capability TLV is a minimal little-endian bitfield, at least one byte when explicitly present. Absence differs from an explicit zero. Decoders preserve unknown low-64-bit values and ignore extension bytes above 64 bits.
+Announcement capability TLV is a minimal little-endian bitfield, at least one byte when explicitly present. Absence differs from an explicit zero. Phase 3 preserves the received one-to-eight-byte value and its low-64-bit interpretation; behavior for extension bytes above 64 bits remains blocked rather than silently ignored.
 
 | Bit | Apple main | Android main advertises | Decision |
 |---:|---|:---:|---|
@@ -112,19 +112,17 @@ Announcement capability TLV is a minimal little-endian bitfield, at least one by
 
 Advertisement is a hint. Security-sensitive behavior is enabled only after a signed announce is bound to the authenticated Noise remote static key and, where defined, an authenticated peer-state payload pins the capability to the current session generation.
 
-## 4. Required compatibility profile
+## 4. Implemented compatibility profile slice
 
-The first BitMessage profile is `BitchatBaseline2026_08`, defined by literal fixtures from both pinned commits. It supports:
+`BitchatBaseline2026_08` remains defined by literal fixtures from both pinned clients. Phase 3 implements only the evidence-first slice below:
 
-- v1 and v2 outer packet decode/encode, route and signature transcripts;
-- legacy and extended announces, including absent/empty/unknown capabilities;
-- public and private messages, receipts, Noise handshake/encrypted payloads;
-- fragmentation/reassembly and bounded decompression;
-- baseline GCS request sync;
-- public file packet decoding and private-media `0x20` when authenticated capability evidence exists;
-- decode-only aliases and unknown-field preservation stated above.
+- v1/v2 public-message (`0x02`) outer packets, exact eight-byte sender/recipient values, v1/v2 length fields, and the literal source-route layout; payload and route bounds are 16 MiB and 32 entries before allocation;
+- exact round-trip encoding for the 10 resolved Apple/Android outer literals and the four resolved legacy/extended announcement literals;
+- bounded TLV parsing for resolved announcement fields, original TLV ordering, unknown-TLV preservation, duplicate rejection, and one-to-eight-byte capability low-64 retention;
+- raw packet, 64-byte signature, and received-compressed-payload retention without signing, verification, decompression, recompression, or a padding policy;
+- 23 executed fixture outcomes in the separate `:protocol:bitchat:productionCompatibilityCheck` report. Five known fixture/layout contradictions remain explicitly `EVIDENCE_LAYOUT_CONFLICT`.
 
-It does not initially emit courier, prekey, groups, board, diagnostics, gateway, bridge, vouch, rotation, double-ratchet, or future native BitMessage traffic. Receiving an understood but disabled feature produces an explicit unsupported/profile result; it must not be silently mis-decoded as baseline traffic.
+The implementation does not claim protocol parity. Signing transcript construction is profile-blocked because no literal transcript vector exists. Compression emission, padding, private/Noise payloads, fragments, sync, Nostr, file/media, routing policy, capability negotiation, peer rotation, and all runtime behavior remain outside Phase 3. No Phase 4 code started.
 
 ## 5. Implementations disagree
 

@@ -1,6 +1,6 @@
 # BitMessage Implementation Plan
 
-Status: executable roadmap; Phase 0, Phase 0.4, Phase 1, and Phase 2 deliverables complete; Phase 3 not started
+Status: executable roadmap; Phases 0, 0.4, 1, 2, and the evidence-first Phase 3 slice are complete; Phase 4 not started
 Baseline date: 2026-08-07  
 Rule: every task leaves the repository buildable, tested and reviewable. No big-bang migration.
 
@@ -175,7 +175,7 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 
 ## 5. Phase 2 — Foundation
 
-**Status: COMPLETE (2026-08-07).** Phase 2 added only the validated deterministic kernel described here. No protocol/Phase 3 implementation has started.
+**Status: COMPLETE (2026-08-07).** Phase 2 added only the validated deterministic kernel described here. Phase 3 later added a separate pure protocol module without changing this scope.
 
 - **Goal:** provide deterministic, validated primitives before protocol code grows.
 - **Scope:** new `:core:foundation` and `:core:model`, plus the existing `:core:testing`; `Bytes`; `TimerId`, `CorrelationId`, and neutral `Generation`; wall/monotonic time contracts; scheduler and entropy contracts; generic reducer/transition/trace primitives; virtual runtime.
@@ -203,16 +203,16 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 ## 6. Phase 3 — BitChat wire protocol
 
 - **Goal:** implement a side-effect-free `BitchatBaseline2026_08` codec proven by both upstream clients.
-- **Scope:** packet v1/v2, reader/writer, flags/routes, signing transcript, padding/compression, announcements/capabilities, baseline payloads and bounded decoding.
+- **Scope completed:** resolved v1/v2 public-message outer packets, bounded reader/writer, flags/recipient/source-route structure, raw signature/compression retention, legacy/extended announcements, and bounded decoding.
 - **Non-goals:** BLE, routing decisions, Noise cryptography, advanced feature activation, native BitMessage protocol.
 - **Dependencies:** Phases 1–2.
 - **Modules affected:** new `:protocol:bitchat`.
-- **Core types/interfaces:** `BitChatPacket`, `RawPacket`, `BitChatCodec`, `DecodeLimit`, `SigningTranscript`, `CompatibilityProfile`, payload sealed types.
+- **Core types/interfaces:** `DecodedPacket`, `RawPacket`, `BitchatCodec`, `DecodeLimits`, blocked `SigningTranscript`, `BitchatBaseline2026_08`, and announcement payload types.
 - **State owner:** none; codecs are pure.
-- **Platform responsibilities:** compression implementations may be provider adapters only if common library output is not byte-compatible; raw received bytes remain common values.
-- **Tests:** every fixture, malformed/truncation/cap corpus, exact encode bytes, property tests, allocation/decompression limits.
+- **Platform responsibilities:** none. Phase 3 adds no compressor/decompressor or platform provider adapter; raw received bytes remain common values.
+- **Tests:** 23 evidence-supported fixture outcomes, exact literal encode bytes, malformed/truncation/cap corpus, raw-retention checks, and deterministic full-manifest coverage reporting.
 - **Compatibility gate:** literal Apple and Android bytes; no codec-generated expected values.
-- **Completion criteria:** baseline inventory decodes/encodes exactly; unknown values are preserved; security bounds precede allocation; G0–G3 pass.
+- **Completion criteria:** evidence-supported outer/announcement literals decode/encode exactly; unknown TLVs are preserved; security bounds precede allocation; every Phase 1 fixture has an explicit report status; G0–G3 pass.
 - **Risks:** endianness, signed Kotlin bytes, payload-length allocation, padding ambiguity, recompression signature bug, doc drift.
 - **Rollback:** production does not use codec until later feature flag; revert module/task independently.
 
@@ -220,15 +220,15 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 
 | ID | Goal and scope | Dependencies | Expected files/modules | Tests / green gate | Definition of Done |
 |---|---|---|---|---|---|
-| 3.1 | Immutable packet/header/flag/route/capability model with unknown preservation. | 2.2, 1.2 | protocol:bitchat model | construction and fixture field tests | No I/O/time/randomness; all bounds explicit. |
-| 3.2 | Bounded binary reader/writer with endian and cursor errors. | 3.1 | protocol binary internals | exhaustive boundary/truncation tests | No unchecked allocation or exception-based malformed flow. |
-| 3.3 | v1 decode against Apple/Android literal vectors. | 3.2 | codec | G2 decode corpus | Exact fields/raw representation and reject reasons. |
-| 3.4 | v1 encode against literal vectors; decode-only aliases never emitted. | 3.3 | codec | byte equality | Every supported fixture re-encodes only where canonicalization permits. |
-| 3.5 | v2 length and source routes, including unresolved neighbor TLV isolated behind tests. | 3.4 | codec/profile | route vectors and malformed cases | No guess about count byte enters shipping profile. |
-| 3.6 | Canonical signing transcript and signature input retention. | 3.4–3.5 | codec/crypto input API | TTL mutation and signature vectors | Relay TTL changes do not alter transcript. |
-| 3.7 | Padding/compression with conservative cap and original compressed-byte preservation. | 3.6 | codec/provider | block boundaries, bombs, foreign DEFLATE | Cap checked pre-allocation; no implicit recompression. |
-| 3.8 | Baseline payload codecs: announce, messages, receipts, fragments, sync envelopes. | 3.3–3.7 | payload package | full fixture corpus | Unknown TLVs/bits survive; PR-only emit disabled. |
-| 3.9 | Compatibility gate/report task that compares pinned upstream harness results. | 3.8 | test/report tooling | G2 | Machine-readable zero-diff report committed as build artifact, not source. |
+| 3.1 | **Complete.** Immutable packet/header/flag/route/capability model with unknown preservation. | 2.2, 1.2 | protocol:bitchat model | construction and fixture field tests | No I/O/time/randomness; all bounds explicit. |
+| 3.2 | **Complete.** Bounded binary reader/writer with endian and cursor errors. | 3.1 | protocol binary internals | exhaustive boundary/truncation tests | No unchecked allocation or exception-based malformed flow. |
+| 3.3 | **Complete.** v1 decode against Apple/Android literal vectors. | 3.2 | codec | literal and hostile corpus | Exact fields/raw representation and resolved reject reasons. |
+| 3.4 | **Complete.** v1 encode against literal vectors; decode-only aliases never emitted. | 3.3 | codec | byte equality | Only literal-supported packets re-encode. |
+| 3.5 | **Complete.** v2 length and source routes; neighbor ambiguity remains report-blocked. | 3.4 | codec/profile | route vectors and malformed cases | No mesh route policy or neighbor-list inference. |
+| 3.6 | **Complete, bounded.** Raw 64-byte signature retention; transcript construction is explicitly profile-blocked without a literal transcript vector. | 3.4–3.5 | codec input values | signature length/retention tests | No crypto or invented canonical transcript. |
+| 3.7 | **Complete, bounded.** Raw compressed-payload retention and emission refusal; padding/decompression policy remains blocked. | 3.6 | codec | raw-retention tests | No implicit recompression, decompression, or provider dependency. |
+| 3.8 | **Complete, scoped.** Legacy/extended announcement TLVs only; messages, receipts, fragments, and sync payloads remain later phases. | 3.3–3.7 | payload package | literal announcement corpus | Unknown TLVs survive; duplicate TLVs reject. |
+| 3.9 | **Complete.** Fresh `productionCompatibilityCheck` creates a deterministic 46-fixture status report. | 3.8 | test/report tooling | Phase 3 production gate | Report is generated under `build/`; the unchanged Phase 1 gate remains separate. |
 
 ## 7. Phase 4 — Deterministic MeshEngine foundation
 
@@ -645,7 +645,7 @@ A task is complete only when:
 
 ## 24. Completed work and next task
 
-The completed Phase 1 and Phase 2 sequence is:
+The completed Phase 1, Phase 2, and evidence-first Phase 3 sequence is:
 
 1. **1.1 — Fixture schema and provenance: complete.**
 2. **1.2 — Dual-upstream minimal literal packet/announce fixtures: complete.**
@@ -655,5 +655,6 @@ The completed Phase 1 and Phase 2 sequence is:
 6. **2.2 — Validated IDs and bounded bytes: complete.**
 7. **2.3 — Time, scheduler, entropy contracts and virtual runtime: complete.**
 8. **2.4 — Generic reducer/transition and typed redacted trace kernel: complete.**
+9. **3.1–3.9 — Evidence-first BitChat wire codec: complete.** The implementation executes only 23 resolved fixture outcomes, records every other fixture as metadata-only, blocked, later-phase, or evidence-layout conflict, and starts no Phase 4 engine code.
 
-**3.1 — BitChat wire model has not started.** Do not start it until the completed Phase 1 and Phase 2 gates are green. That ordering prevents the new implementation from defining its own compatibility target.
+**Next task: Phase 4 is not started.** Do not infer mesh/runtime work from the Phase 3 codec; it is a pure codec and report only.
