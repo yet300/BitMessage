@@ -17,3 +17,15 @@ enum class DecodeError {
     UNSUPPORTED_FEATURE,
     PROFILE_VIOLATION,
 }
+
+sealed interface EncodeResult {
+    data class Success(val bytes: com.yet.bitmessage.foundation.Bytes) : EncodeResult
+
+    data class Failure(val error: EncodeError) : EncodeResult
+}
+
+enum class EncodeError {
+    INVALID_LENGTH,
+    UNSUPPORTED_FEATURE,
+    PROFILE_VIOLATION,
+}
