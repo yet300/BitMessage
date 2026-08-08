@@ -29,6 +29,8 @@ BitMessage/
 │   ├── foundation/             Lowest-level multiplatform building blocks
 │   ├── model/                  Typed kernel models
 │   └── testing/                Phase 1 compatibility fixtures and test harnesses
+├── protocol/
+│   └── bitchat/                Pure BitChat wire codec
 ├── build-logic/
 │   └── convention/             Local Gradle convention plugins
 ├── gradle/
@@ -50,6 +52,7 @@ BitMessage/
 | `:core:foundation` | Lowest-level multiplatform building blocks | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin with no project dependency |
 | `:core:model` | Typed kernel models | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` |
 | `:core:testing` | Test-only compatibility fixture models, loaders, and validation gates | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`; neutral fixture resources are consumed by tests only |
+| `:protocol:bitchat` | Pure BitChat wire model and codec | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` and `:core:model`; test scope may depend on `:core:testing` |
 | `build-logic:convention` | Shared Gradle configuration for multiplatform modules | Included build, not application runtime code |
 
 Current dependency direction:
@@ -59,6 +62,7 @@ androidApp -> sharedUI -> sharedLogic -> core:common
 iosApp ----------------> sharedLogic -> core:common
 core:model -----------------------> core:foundation
 compatibility fixtures -----------> core:testing -> core:foundation
+protocol:bitchat -----------------> core:foundation, core:model
 ```
 
 Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Production modules must not depend on `:core:testing`, and lower-level modules must not import application entry points or UI modules.
@@ -139,6 +143,9 @@ Run commands from the repository root with the checked-in Gradle wrapper.
 
 # Run the Phase 1 fixture suite and fail if no compatibility test executes
 ./gradlew :core:testing:compatibilityCheck
+
+# Run BitChat protocol module tests
+./gradlew :protocol:bitchat:allTests
 
 # Link the shared framework for the iOS simulator
 ./gradlew :sharedLogic:linkDebugFrameworkIosSimulatorArm64

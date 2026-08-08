@@ -40,5 +40,7 @@ include(":core:foundation")
 include(":core:model")
 include(":core:testing")
 
+include(":protocol:bitchat")
+
 include(":feature")
 include(":feature:root")
