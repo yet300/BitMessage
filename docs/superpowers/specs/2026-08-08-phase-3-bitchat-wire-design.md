@@ -1,6 +1,6 @@
 # Phase 3 BitChat Wire Protocol Design
 
-Status: approved design awaiting written-spec review
+Status: reviewed and approved for planning
 
 ## Goal
 
