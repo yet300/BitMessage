@@ -226,6 +226,8 @@ The result is represented by a dedicated fixed-size value, not arbitrary `Bytes`
 
 Signing bytes also belong to `:protocol:bitchat`. The protocol must build verification evidence from retained received bytes, not by decoding and re-encoding foreign compressed or signed data.
 
+The pinned Apple and Android `toBinaryDataForSigning` helpers agree on the exact supported-path construction: clear the signature, fix TTL to zero, encode the unsigned packet, then apply their shared deterministic padding algorithm. For the Phase 4 known answer, the unsigned v2 core is the 26-byte value `0202000102030405060708000000000200112233445566774142`; both clients sign a 256-byte transcript consisting of that core followed by 230 bytes of `e6`. The 26-byte value alone is not the signing transcript. This evidence amendment was approved after the initial harness exposed the distinction. Foreign compressed packets and packets carrying the unresolved `0x10` flag remain profile-blocked.
+
 Relay encoding may change TTL only through a protocol operation that preserves the signing-relevant representation. If the pinned evidence does not prove this invariant, signed packets may be locally admitted but signed relay remains profile-blocked.
 
 Phase 4 injects signature verification as an effect handler contract. It does not select an algorithm, parse a durable identity, manage keys, or introduce a cryptographic module. Tests use deterministic fakes and pinned verification requests.

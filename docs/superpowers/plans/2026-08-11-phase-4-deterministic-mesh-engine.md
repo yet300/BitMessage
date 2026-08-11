@@ -18,11 +18,11 @@ The Phase 1 `compatibility/` tree is immutable. New Phase 4 literals live in pro
 
 The recorded pre-implementation baseline is: Phase 1 `compatibilityCheck` 32 Android-host tests including 6 corpus tests; Phase 2 foundation 28, model 6, and testing 58 target executions (92 total); Phase 3 protocol 72 target executions plus one dedicated production-coverage gate test. Android debug assembly and the iOS simulator `SharedLogic` framework link both passed before Phase 4 production work.
 
-### Execution blocker recorded 2026-08-11
+### Execution evidence amendment recorded 2026-08-11
 
 Task 1 completed in commit `704c2484ff0473f317e131013321e98d40c22c07`. Task 2's disposable harness ran against the exact pinned Apple and Android SHAs before any protocol or engine production implementation. Packet identity, full SHA-256, 16-byte truncation, 13-byte fragment metadata, fragment literals, and out-of-order reassembly matched the planned answers.
 
-The signing transcript did not. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The approved 26-byte literal is therefore the unpadded semantic packet, not the bytes currently signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Per Task 2's stop rule, `SigningTranscript`, authenticated relay, and all dependent mesh production paths remain unimplemented until the approved design either adopts the reproduced 256-byte transcript or explicitly narrows/de-scopes signed interoperability. No constant was altered and `compatibility/` remains untouched.
+The initial signing assertion did not match. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The 26-byte value is therefore the unpadded semantic packet, not the bytes signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Execution stopped without production changes. The user then approved adopting the reproduced 256-byte transcript. Task 2 resumes with the harness asserting that exact prefix, length, and padding, while `compatibility/` remains untouched.
 
 The implementation must preserve these stage boundaries:
 
@@ -190,7 +190,8 @@ rtk git commit -m "build: add Phase 4 mesh modules"
 packet identity input: 02001122334455667701020304050607084142
 SHA-256:              25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda
 wire packet ID:       25429fbd15e2051049307f8e650ae863
-signing transcript:   0202000102030405060708000000000200112233445566774142
+unsigned signing core: 0202000102030405060708000000000200112233445566774142
+signing transcript:    unsigned core followed by e6 repeated 230 times (256 bytes total)
 fragment metadata:    00010203040506070001000202aabb
 fragment zero:        0001020304050607000000020202020301020304050607080000
 fragment one:         0001020304050607000100020200000200112233445566774142
@@ -275,7 +276,7 @@ object PacketIdentity {
 
 `input` writes type, exact eight-byte sender, big-endian timestamp, and retained payload in that order. `fromSha256` requires exactly 32 digest bytes and copies the first 16.
 
-- [ ] Implement the transcript by copying the decoded packet with TTL 0, clearing only `HAS_SIGNATURE`, removing the signature, and using the matching v1/v2 encoder. Reject compressed or padded signing paths as `UNSUPPORTED_FEATURE`; the paired foreign-compression fixes remain unmerged.
+- [ ] Implement the transcript by copying the decoded packet with TTL 0, clearing only `HAS_SIGNATURE`, removing the signature, using the matching v1/v2 encoder, and applying the pinned clients' shared deterministic block-padding algorithm. For the known answer, the 26-byte unsigned core pads to 256 bytes with 230 `e6` bytes. Reject compressed or flagged-padding signing inputs as `UNSUPPORTED_FEATURE`; the paired foreign-compression fixes remain unmerged.
 
 ```kotlin
 object SigningTranscript {
@@ -287,7 +288,7 @@ object SigningTranscript {
             (packet.flags.value.toUInt() and PacketFlags.SIGNATURE_BIT.inv()).toUByte(),
         )
         return when (val encoded = BitchatCodec.encode(packet.copy(ttl = 0u, flags = flags, signature = null))) {
-            is EncodeResult.Success -> DecodeResult.Success(encoded.bytes)
+            is EncodeResult.Success -> DecodeResult.Success(SigningPadding.apply(encoded.bytes))
             is EncodeResult.Failure -> DecodeResult.Failure(DecodeError.PROFILE_VIOLATION)
         }
     }

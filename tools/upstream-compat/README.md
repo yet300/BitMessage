@@ -23,7 +23,7 @@ tools/upstream-compat/verify-upstreams.sh /tmp/bitmessage-upstreams
 4. Android decoders accept Apple-emitted outer and announcement literals.
 5. Both pinned clients execute the proposed Phase 4 packet-ID, fixed-TTL signing, signature-preserving relay, and 13-byte fragment-metadata assertions through their production helpers.
 
-Phase 4 execution currently records one intentional failing assertion at both pins: the production signing helpers emit a 256-byte padded transcript, consisting of the proposed 26-byte unpadded core followed by 230 `e6` bytes. The proposed 26-byte signing literal must not be treated as reproduced signing evidence unless the profile decision is revised. Packet identity and fragment literals match. The harness keeps the proposed literal unchanged so the mismatch remains executable and visible.
+The first Phase 4 run exposed that both production signing helpers emit a 256-byte padded transcript, consisting of the 26-byte unpadded core followed by 230 `e6` bytes. The profile decision was subsequently amended to adopt those reproduced bytes. The harness asserts the exact core, total length, and padding rather than treating the 26-byte core alone as a signing transcript. Packet identity and fragment literals also match.
 
 The extended announcement bytes intentionally differ in TLV order. The harness and neutral corpus preserve both raw encodings.
 
