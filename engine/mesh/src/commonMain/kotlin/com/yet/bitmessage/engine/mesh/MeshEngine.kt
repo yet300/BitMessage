@@ -50,12 +50,16 @@ class MeshEngine(
         event: MeshEvent.RuntimeStarted,
     ): Transition<MeshState, MeshEffect> {
         if (event.generation != state.generation) return staleLifecycle(state)
+        val running = state.prepareForCapacity(event.observedAt).copy(
+            localPeer = event.localPeer,
+            lifecycle = MeshLifecycle.RUNNING,
+            dedupExpiryTimer = null,
+            topologyExpiryTimer = null,
+        )
+        val dedup = scheduleDedupExpiry(running, event.observedAt, cancelExisting = false)
         return Transition(
-            state = state.copy(
-                localPeer = event.localPeer,
-                observedAt = event.observedAt,
-                lifecycle = MeshLifecycle.RUNNING,
-            ),
+            state = dedup.state,
+            effects = dedup.effects,
             trace = listOf(
                 MeshTrace.record(MeshTraceTransition.LIFECYCLE, TraceDecision.APPLIED),
             ),
@@ -67,10 +71,24 @@ class MeshEngine(
         event: MeshEvent.RuntimeStopping,
     ): Transition<MeshState, MeshEffect> {
         if (event.generation != state.generation) return staleLifecycle(state)
+        val prepared = state.prepareForCapacity(event.observedAt)
         return Transition(
-            state = state.copy(
-                observedAt = event.observedAt,
-                lifecycle = MeshLifecycle.STOPPING,
+            state = prepared.copy(
+                lifecycle = MeshLifecycle.STOPPED,
+                links = SnapshotMap(),
+                provisionalBindings = SnapshotMap(),
+                pendingAdmissions = SnapshotMap(),
+                pendingFragmentDecodes = SnapshotMap(),
+                fragmentStreams = SnapshotMap(),
+                routeObservations = SnapshotMap(),
+                scheduledRelays = SnapshotMap(),
+                pendingRelayEntropy = SnapshotMap(),
+                pendingRelayEncodes = SnapshotMap(),
+                pendingLinkWrites = SnapshotMap(),
+                dedupExpiryTimer = null,
+                topologyExpiryTimer = null,
+                aggregatePendingBytes = 0,
+                aggregateFragmentBytes = 0,
             ),
             trace = listOf(
                 MeshTrace.record(MeshTraceTransition.LIFECYCLE, TraceDecision.APPLIED),

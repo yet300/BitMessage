@@ -492,12 +492,12 @@ private fun scheduleTopologyExpiry(
     )
 }
 
-private data class DedupSchedule(
+internal data class DedupSchedule(
     val state: MeshState,
     val effects: List<MeshEffect>,
 )
 
-private fun scheduleDedupExpiry(
+internal fun scheduleDedupExpiry(
     state: MeshState,
     observedAt: com.yet.bitmessage.foundation.MonotonicTime,
     cancelExisting: Boolean,
