@@ -222,6 +222,7 @@ internal fun reduceTimer(
     if (event.generation != state.generation || state.lifecycle != MeshLifecycle.RUNNING) {
         return ignoredAdmission(state, event.correlationId, stale = event.generation != state.generation)
     }
+    reduceFragmentTimerOrNull(state, event)?.let { return it }
     reduceRelayTimerOrNull(state, event)?.let { return it }
     val pending = state.pendingAdmissions[event.correlationId]
     if (pending != null) {
@@ -610,7 +611,18 @@ private fun admissionConsequences(
         }
         KnownPacketType.FRAGMENT -> {
             val fragment = updated.issueCorrelation(MeshOperation.DECODE_FRAGMENT)
-            updated = fragment.state
+            val requests = fragment.state.pendingFragmentDecodes.toMutableMap().apply {
+                put(
+                    fragment.correlationId,
+                    PendingFragmentDecode(
+                        packetId = packetId,
+                        source = pending.source,
+                        sender = pending.packet.sender,
+                        expiresAt = observedAt.plus(limits.dedupLifetime),
+                    ),
+                )
+            }
+            updated = fragment.state.copy(pendingFragmentDecodes = SnapshotMap(requests))
             effects += MeshEffect.DecodeFragmentPayload(
                 correlationId = fragment.correlationId,
                 generation = state.generation,

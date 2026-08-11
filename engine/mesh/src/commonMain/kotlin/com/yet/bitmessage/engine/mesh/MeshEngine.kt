@@ -16,7 +16,7 @@ class MeshEngine(
             is MeshEvent.PacketDecoded -> reduceDecoded(state, event, limits)
             is MeshEvent.PacketDigestComputed -> reduceDigest(state, event, limits)
             is MeshEvent.SignatureVerified -> reduceSignature(state, event, limits)
-            is MeshEvent.FragmentPayloadDecoded -> ignoredResult(state, event)
+            is MeshEvent.FragmentPayloadDecoded -> reduceFragmentDecoded(state, event, limits)
             is MeshEvent.RelayEncoded -> reduceRelayEncoded(state, event)
             is MeshEvent.EntropyProvided -> reduceEntropy(state, event, limits)
             is MeshEvent.TimerElapsed -> reduceTimer(state, event)

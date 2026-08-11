@@ -109,6 +109,7 @@ data class FragmentStream(
     val fragments: SnapshotMap<UShort, Bytes>,
     val retainedBytes: Int,
     val expiresAt: MonotonicTime,
+    val timerCorrelationId: CorrelationId,
     val timerId: TimerId,
 ) {
     init {
@@ -120,6 +121,13 @@ data class FragmentStream(
         }
     }
 }
+
+data class PendingFragmentDecode(
+    val packetId: PacketId,
+    val source: PacketSource,
+    val sender: WirePeerId,
+    val expiresAt: MonotonicTime,
+)
 
 data class RouteObservation(
     val sourcePeer: WirePeerId,
@@ -169,6 +177,7 @@ data class MeshState(
     val links: SnapshotMap<LinkId, ActiveLink> = SnapshotMap(),
     val provisionalBindings: SnapshotMap<PeerLinkKey, PeerBinding> = SnapshotMap(),
     val pendingAdmissions: SnapshotMap<CorrelationId, PendingAdmission> = SnapshotMap(),
+    val pendingFragmentDecodes: SnapshotMap<CorrelationId, PendingFragmentDecode> = SnapshotMap(),
     val admittedPackets: SnapshotMap<PacketId, AdmittedPacket> = SnapshotMap(),
     val fragmentStreams: SnapshotMap<FragmentStreamKey, FragmentStream> = SnapshotMap(),
     val routeObservations: SnapshotMap<PacketId, RouteObservation> = SnapshotMap(),
@@ -231,6 +240,7 @@ fun MeshState.issueCorrelation(operation: MeshOperation): CorrelationIssue {
 
 internal fun MeshState.prepareForCapacity(observedAt: MonotonicTime): MeshState {
     val pending = pendingAdmissions.filterValues { it.expiresAt > observedAt }
+    val fragmentDecodes = pendingFragmentDecodes.filterValues { it.expiresAt > observedAt }
     val fragments = fragmentStreams.filterValues { it.expiresAt > observedAt }
     val relayEntropy = pendingRelayEntropy.filterValues { it.expiresAt > observedAt }
     val relayEncodes = pendingRelayEncodes.filterValues { it.expiresAt > observedAt }
@@ -240,6 +250,7 @@ internal fun MeshState.prepareForCapacity(observedAt: MonotonicTime): MeshState 
             provisionalBindings.filterValues { it.expiresAt > observedAt },
         ),
         pendingAdmissions = SnapshotMap(pending),
+        pendingFragmentDecodes = SnapshotMap(fragmentDecodes),
         admittedPackets = SnapshotMap(admittedPackets.filterValues { it.expiresAt > observedAt }),
         fragmentStreams = SnapshotMap(fragments),
         routeObservations = SnapshotMap(
