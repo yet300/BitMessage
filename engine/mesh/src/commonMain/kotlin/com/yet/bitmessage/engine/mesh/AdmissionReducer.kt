@@ -9,6 +9,7 @@ import com.yet.bitmessage.protocol.bitchat.BitchatBaseline2026_08
 import com.yet.bitmessage.protocol.bitchat.PacketAdmissionPolicy
 import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.protocol.bitchat.PacketIdentity
+import com.yet.bitmessage.protocol.bitchat.KnownPacketType
 import com.yet.bitmessage.protocol.bitchat.SigningTranscript
 import com.yet.bitmessage.protocol.bitchat.admissionPolicy
 import com.yet.bitmessage.transport.api.LinkEvent
@@ -241,6 +242,29 @@ internal fun reduceTimer(
     }
 
     val topologyTimer = state.topologyExpiryTimer
+    val dedupTimer = state.dedupExpiryTimer
+    if (dedupTimer != null &&
+        dedupTimer.correlationId == event.correlationId &&
+        dedupTimer.timerId == event.timerId
+    ) {
+        if (event.observedAt < dedupTimer.expiresAt) {
+            return ignoredAdmission(state, event.correlationId, stale = false)
+        }
+        val prepared = state.prepareForCapacity(event.observedAt).copy(dedupExpiryTimer = null)
+        val rescheduled = scheduleDedupExpiry(prepared, event.observedAt, cancelExisting = false)
+        return Transition(
+            state = rescheduled.state,
+            effects = rescheduled.effects,
+            trace = listOf(
+                MeshTrace.record(
+                    MeshTraceTransition.TIMER,
+                    TraceDecision.APPLIED,
+                    event.correlationId,
+                    itemCount = prepared.admittedPackets.size,
+                ),
+            ),
+        )
+    }
     if (topologyTimer == null ||
         topologyTimer.correlationId != event.correlationId ||
         topologyTimer.timerId != event.timerId ||
@@ -339,15 +363,17 @@ private fun admit(
         routeObservations = routes,
     )
     val topology = scheduleTopologyExpiry(admittedState, observedAt, cancelExisting = true)
+    val dedup = scheduleDedupExpiry(topology.state, observedAt, cancelExisting = true)
+    val consequences = admissionConsequences(dedup.state, pending, packetId)
     return Transition(
-        state = topology.state,
-        effects = listOf(withoutPending.cancel) + topology.effects,
+        state = consequences.state,
+        effects = listOf(withoutPending.cancel) + topology.effects + dedup.effects + consequences.effects,
         trace = listOf(
             MeshTrace.record(
                 MeshTraceTransition.ADMISSION,
                 TraceDecision.APPLIED,
                 pendingId,
-                itemCount = topology.state.admittedPackets.size,
+                itemCount = consequences.state.admittedPackets.size,
             ),
         ),
     )
@@ -458,6 +484,122 @@ private fun scheduleTopologyExpiry(
     )
 }
 
+private data class DedupSchedule(
+    val state: MeshState,
+    val effects: List<MeshEffect>,
+)
+
+private fun scheduleDedupExpiry(
+    state: MeshState,
+    observedAt: com.yet.bitmessage.foundation.MonotonicTime,
+    cancelExisting: Boolean,
+): DedupSchedule {
+    val earliest = state.admittedPackets.values.minOfOrNull(AdmittedPacket::expiresAt)
+    val existing = state.dedupExpiryTimer
+    if (earliest == null) {
+        val effects = if (cancelExisting && existing != null) {
+            listOf<MeshEffect>(
+                MeshEffect.Cancel(
+                    correlationId = existing.correlationId,
+                    generation = state.generation,
+                    timerId = existing.timerId,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        return DedupSchedule(state.copy(dedupExpiryTimer = null), effects)
+    }
+    if (existing?.expiresAt == earliest) return DedupSchedule(state, emptyList())
+
+    val issued = state.issueCorrelation(MeshOperation.TIMER)
+    val timer = ExpiryTimer(
+        correlationId = issued.correlationId,
+        timerId = TimerId.of(DEDUP_TIMER_ID),
+        expiresAt = earliest,
+    )
+    val effects = buildList<MeshEffect> {
+        if (cancelExisting && existing != null) {
+            add(
+                MeshEffect.Cancel(
+                    correlationId = existing.correlationId,
+                    generation = state.generation,
+                    timerId = existing.timerId,
+                ),
+            )
+        }
+        add(
+            MeshEffect.Schedule(
+                correlationId = timer.correlationId,
+                generation = state.generation,
+                timerId = timer.timerId,
+                delay = earliest.elapsedSince(observedAt),
+            ),
+        )
+    }
+    return DedupSchedule(
+        state = issued.state.copy(dedupExpiryTimer = timer),
+        effects = effects,
+    )
+}
+
+private data class AdmissionConsequences(
+    val state: MeshState,
+    val effects: List<MeshEffect>,
+)
+
+private fun admissionConsequences(
+    state: MeshState,
+    pending: PendingAdmission,
+    packetId: PacketId,
+): AdmissionConsequences {
+    var updated = state
+    val effects = mutableListOf<MeshEffect>()
+    when (pending.packet.type.knownType) {
+        KnownPacketType.MESSAGE -> {
+            if (pending.packet.recipient == null || pending.packet.recipient == state.localPeer) {
+                val publication = updated.issueCorrelation(MeshOperation.PUBLICATION)
+                updated = publication.state
+                effects += MeshEffect.PublishPublicPayload(
+                    correlationId = publication.correlationId,
+                    generation = state.generation,
+                    packetId = packetId,
+                    sender = pending.packet.sender,
+                    ingressLink = pending.source.ingressLink,
+                    timestamp = pending.packet.timestamp,
+                    payload = pending.packet.payload,
+                )
+            }
+            RelayPolicy.outgoingTtl(pending.packet.ttl)?.let { outgoingTtl ->
+                val entropy = updated.issueCorrelation(MeshOperation.REQUEST_ENTROPY)
+                updated = entropy.state
+                effects += MeshEffect.RequestEntropy(
+                    correlationId = entropy.correlationId,
+                    generation = state.generation,
+                    packetId = packetId,
+                    source = pending.source,
+                    packet = pending.packet,
+                    outgoingTtl = outgoingTtl,
+                )
+            }
+        }
+        KnownPacketType.FRAGMENT -> {
+            val fragment = updated.issueCorrelation(MeshOperation.DECODE_FRAGMENT)
+            updated = fragment.state
+            effects += MeshEffect.DecodeFragmentPayload(
+                correlationId = fragment.correlationId,
+                generation = state.generation,
+                packetId = packetId,
+                source = pending.source,
+                sender = pending.packet.sender,
+                payload = pending.packet.payload,
+            )
+        }
+        null -> Unit
+    }
+    return AdmissionConsequences(updated, effects)
+}
+
 private fun addBinding(
     state: MeshState,
     pending: PendingAdmission,
@@ -530,6 +672,7 @@ private fun ignoredAdmission(
 
 private const val SHA256_BYTES: Int = 32
 private const val TOPOLOGY_TIMER_ID: String = "mesh-topology-expiry"
+private const val DEDUP_TIMER_ID: String = "mesh-dedup-expiry"
 
 private fun reduceLinkOpened(
     state: MeshState,
