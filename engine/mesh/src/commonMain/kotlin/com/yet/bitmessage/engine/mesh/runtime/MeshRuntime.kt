@@ -13,6 +13,7 @@ import com.yet.bitmessage.foundation.TraceRecord
 import com.yet.bitmessage.foundation.Transition
 import com.yet.bitmessage.foundation.TimerId
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -78,7 +79,14 @@ class MeshRuntime(
         get() = mutableState.value?.generation ?: Generation(0)
 
     val traceEvents: ReceiveChannel<TraceRecord>?
-        get() = activeRun?.traces
+        get() {
+            if (!lifecycleMutex.tryLock()) return null
+            return try {
+                activeRun?.takeIf { it.actorJob.isActive }?.traces
+            } finally {
+                lifecycleMutex.unlock()
+            }
+        }
 
     suspend fun start(
         localPeer: WirePeerId,
@@ -105,17 +113,20 @@ class MeshRuntime(
             activeRun = context
             context.actorJob = context.scope.launch { actorLoop(context) }
             context.effectJob = context.scope.launch { effectLoop(context) }
+            context.actorJob.invokeOnCompletion { failure ->
+                if (failure != null && failure !is CancellationException) {
+                    context.supervisor.cancel()
+                }
+            }
 
-            val acknowledged = CompletableDeferred<Unit>()
             try {
-                context.controls.send(
-                    ActorCommand.Reduce(
-                        event = MeshEvent.RuntimeStarted(nextGeneration, observedAt, localPeer),
-                        acknowledged = acknowledged,
+                check(
+                    reduceControl(
+                        context,
+                        MeshEvent.RuntimeStarted(nextGeneration, observedAt, localPeer),
                     ),
-                )
-                acknowledged.await()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                ) { "Mesh runtime actor terminated during start." }
+            } catch (cancelled: CancellationException) {
                 withContext(NonCancellable) { shutdownContext(context) }
                 activeRun = null
                 throw cancelled
@@ -129,57 +140,50 @@ class MeshRuntime(
         }
 
     fun trySubmit(event: MeshEvent): SubmitResult {
-        if (!accepting) return SubmitResult.Closed
-        val mailbox = activeRun?.external ?: return SubmitResult.Closed
-        val result = mailbox.trySend(event)
-        return when {
-            result.isSuccess -> SubmitResult.Accepted
-            result.isClosed -> SubmitResult.Closed
-            else -> SubmitResult.Backpressured
+        if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
+        return try {
+            if (!accepting) return SubmitResult.Closed
+            val context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
+            val mailbox = context.external
+            val result = mailbox.trySend(event)
+            when {
+                result.isSuccess -> SubmitResult.Accepted
+                result.isClosed -> SubmitResult.Closed
+                else -> SubmitResult.Backpressured
+            }
+        } finally {
+            lifecycleMutex.unlock()
         }
     }
 
-    suspend fun stop(observedAt: MonotonicTime): StopResult = stopActiveRun(observedAt)
+    suspend fun stop(observedAt: MonotonicTime): StopResult =
+        lifecycleMutex.withLock { stopActiveRunLocked(observedAt) }
 
     suspend fun close(observedAt: MonotonicTime) {
-        val shouldClose = lifecycleMutex.withLock {
-            if (permanentlyClosed) {
-                false
-            } else {
-                permanentlyClosed = true
-                accepting = false
-                true
-            }
+        lifecycleMutex.withLock {
+            permanentlyClosed = true
+            accepting = false
+            stopActiveRunLocked(observedAt)
         }
-        if (shouldClose) stopActiveRun(observedAt)
     }
 
-    private suspend fun stopActiveRun(observedAt: MonotonicTime): StopResult {
-        val context = lifecycleMutex.withLock {
-            if (stopping) return@withLock null
-            val current = activeRun ?: return@withLock null
-            stopping = true
-            accepting = false
-            current
-        } ?: return StopResult.AlreadyStopped
+    private suspend fun stopActiveRunLocked(observedAt: MonotonicTime): StopResult {
+        if (stopping) return StopResult.AlreadyStopped
+        val context = activeRun ?: return StopResult.AlreadyStopped
+        stopping = true
+        accepting = false
 
         try {
             val currentState = requireNotNull(mutableState.value)
-            val acknowledged = CompletableDeferred<Unit>()
-            context.controls.send(
-                ActorCommand.Reduce(
-                    event = MeshEvent.RuntimeStopping(currentState.generation, observedAt),
-                    acknowledged = acknowledged,
-                ),
-            )
-            acknowledged.await()
+            val stoppingEvent = MeshEvent.RuntimeStopping(currentState.generation, observedAt)
+            if (!reduceControl(context, stoppingEvent)) {
+                reduceAndPublish(context, stoppingEvent)
+            }
         } finally {
             withContext(NonCancellable) {
                 shutdownContext(context)
-                lifecycleMutex.withLock {
-                    if (activeRun === context) activeRun = null
-                    stopping = false
-                }
+                if (activeRun === context) activeRun = null
+                stopping = false
             }
         }
         return StopResult.Stopped
@@ -194,7 +198,7 @@ class MeshRuntime(
             external = Channel(limits.eventMailboxCapacity),
             effects = Channel(limits.effectQueueCapacity),
             results = Channel(Channel.RENDEZVOUS),
-            controls = Channel(Channel.RENDEZVOUS),
+            controls = Channel(1),
             traces = Channel(limits.traceBufferCapacity),
         )
     }
@@ -226,6 +230,20 @@ class MeshRuntime(
                     reduceAndPublish(context, event)
                 }
             }
+        }
+    }
+
+    private suspend fun reduceControl(
+        context: RunContext,
+        event: MeshEvent,
+    ): Boolean {
+        if (!context.actorJob.isActive) return false
+        val acknowledged = CompletableDeferred<Unit>()
+        val sent = context.controls.trySend(ActorCommand.Reduce(event, acknowledged))
+        if (sent.isFailure) return false
+        return select {
+            acknowledged.onAwait { true }
+            context.actorJob.onJoin { false }
         }
     }
 

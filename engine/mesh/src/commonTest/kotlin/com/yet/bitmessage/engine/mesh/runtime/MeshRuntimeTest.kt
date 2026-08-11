@@ -8,7 +8,9 @@ import com.yet.bitmessage.engine.mesh.MeshLifecycle
 import com.yet.bitmessage.engine.mesh.MeshLimits
 import com.yet.bitmessage.engine.mesh.MeshResult
 import com.yet.bitmessage.engine.mesh.MeshEngine
+import com.yet.bitmessage.engine.mesh.MeshState
 import com.yet.bitmessage.foundation.Bytes
+import com.yet.bitmessage.foundation.Engine
 import com.yet.bitmessage.protocol.bitchat.BitchatCodec
 import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.FragmentPayloadCodec
@@ -17,12 +19,19 @@ import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkEvent
 import com.yet.bitmessage.transport.api.LinkResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -31,6 +40,94 @@ import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MeshRuntimeTest {
+    @Test
+    fun submissionDuringStartReportsPressureWithoutReadingPartialLifecycleState() = runTest {
+        val runtime = MeshRuntime(MeshEngine(), ProtocolExecutor(), backgroundScope, MeshLimits())
+        val starting = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        }
+
+        assertEquals(
+            SubmitResult.Backpressured,
+            runtime.trySubmit(opened(MeshFixtures.generation)),
+        )
+        assertNull(runtime.traceEvents)
+
+        runCurrent()
+        assertEquals(StartResult.Started, starting.await())
+        assertEquals(
+            SubmitResult.Accepted,
+            runtime.trySubmit(opened(runtime.generation)),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun closeConcurrentWithStopWaitsForOwnedTeardown() = runTest {
+        val runtime = MeshRuntime(MeshEngine(), ProtocolExecutor(), backgroundScope, MeshLimits())
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val stopping = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.stop(MeshFixtures.now)
+        }
+        val closing = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.close(MeshFixtures.now)
+        }
+
+        assertFalse(closing.isCompleted)
+        runCurrent()
+        assertEquals(StopResult.Stopped, stopping.await())
+        closing.await()
+        assertEquals(
+            StartResult.Closed,
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now),
+        )
+    }
+
+    @Test
+    fun parentCancellationRejectsIntakeAndCloseStillTerminates() = runTest {
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(backgroundScope.coroutineContext + parentJob)
+        val runtime = MeshRuntime(MeshEngine(), ProtocolExecutor(), ownedScope, MeshLimits())
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        parentJob.cancel()
+        runCurrent()
+
+        assertEquals(SubmitResult.Closed, runtime.trySubmit(opened(runtime.generation)))
+        runtime.close(MeshFixtures.now)
+        assertEquals(MeshLifecycle.STOPPED, assertNotNull(runtime.state.value).lifecycle)
+    }
+
+    @Test
+    fun reducerInvariantFailureTerminatesIntakeAndRemainsClosable() = runTest {
+        val failure = CompletableDeferred<Throwable>()
+        val handler = CoroutineExceptionHandler { _, throwable -> failure.complete(throwable) }
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(backgroundScope.coroutineContext + parentJob + handler)
+        val delegate = MeshEngine()
+        val throwingEngine = object : Engine<MeshState, MeshEvent, MeshEffect> {
+            override fun reduce(
+                state: MeshState,
+                event: MeshEvent,
+            ) = if (event is MeshEvent.LinkObserved) {
+                error("internal invariant")
+            } else {
+                delegate.reduce(state, event)
+            }
+        }
+        val runtime = MeshRuntime(throwingEngine, ProtocolExecutor(), ownedScope, MeshLimits())
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+        runCurrent()
+
+        assertIs<IllegalStateException>(failure.await())
+        assertEquals(SubmitResult.Closed, runtime.trySubmit(opened(runtime.generation)))
+        runtime.close(MeshFixtures.now)
+        assertEquals(MeshLifecycle.STOPPED, assertNotNull(runtime.state.value).lifecycle)
+    }
+
     @Test
     fun constructorLaunchesNothingAndClosePreventsResurrection() = runTest {
         val executor = ProtocolExecutor()
@@ -316,7 +413,7 @@ class MeshRuntimeTest {
         }
     }
 
-    private fun assertTransientStateIsEmpty(state: com.yet.bitmessage.engine.mesh.MeshState) {
+    private fun assertTransientStateIsEmpty(state: MeshState) {
         assertTrue(state.links.isEmpty())
         assertTrue(state.provisionalBindings.isEmpty())
         assertTrue(state.pendingAdmissions.isEmpty())
