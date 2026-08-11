@@ -18,6 +18,12 @@ The Phase 1 `compatibility/` tree is immutable. New Phase 4 literals live in pro
 
 The recorded pre-implementation baseline is: Phase 1 `compatibilityCheck` 32 Android-host tests including 6 corpus tests; Phase 2 foundation 28, model 6, and testing 58 target executions (92 total); Phase 3 protocol 72 target executions plus one dedicated production-coverage gate test. Android debug assembly and the iOS simulator `SharedLogic` framework link both passed before Phase 4 production work.
 
+### Execution blocker recorded 2026-08-11
+
+Task 1 completed in commit `704c2484ff0473f317e131013321e98d40c22c07`. Task 2's disposable harness ran against the exact pinned Apple and Android SHAs before any protocol or engine production implementation. Packet identity, full SHA-256, 16-byte truncation, 13-byte fragment metadata, fragment literals, and out-of-order reassembly matched the planned answers.
+
+The signing transcript did not. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The approved 26-byte literal is therefore the unpadded semantic packet, not the bytes currently signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Per Task 2's stop rule, `SigningTranscript`, authenticated relay, and all dependent mesh production paths remain unimplemented until the approved design either adopts the reproduced 256-byte transcript or explicitly narrows/de-scopes signed interoperability. No constant was altered and `compatibility/` remains untouched.
+
 The implementation must preserve these stage boundaries:
 
 ```text

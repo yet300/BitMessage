@@ -15,8 +15,10 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   -only-testing:bitchatTests_macOS/BitMessageAnnouncementFixtureExportTests \
-  -only-testing:bitchatTests_macOS/BitMessageAnnouncementFixtureAcceptanceTests
+  -only-testing:bitchatTests_macOS/BitMessageAnnouncementFixtureAcceptanceTests \
+  -only-testing:bitchatTests_macOS/BitMessagePhase4EvidenceTests
 
 "$target_root/android/gradlew" -p "$target_root/android" :app:testDebugUnitTest \
   --tests "com.bitchat.android.protocol.BitMessageFixtureExportTest" \
-  --tests "com.bitchat.android.protocol.BitMessageFixtureAcceptanceTest"
+  --tests "com.bitchat.android.protocol.BitMessageFixtureAcceptanceTest" \
+  --tests "com.bitchat.android.protocol.BitMessagePhase4EvidenceTest"
