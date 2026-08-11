@@ -40,6 +40,7 @@ struct BitMessagePhase4EvidenceTests {
             version: 2
         )
         let signingTranscript = try #require(signed.toBinaryDataForSigning())
+        let signedBytes = try #require(signed.toBinaryData(padding: false))
         var relayed = signed
         relayed.ttl = 6
         let relayedBytes = try #require(relayed.toBinaryData(padding: false))
@@ -66,7 +67,9 @@ struct BitMessagePhase4EvidenceTests {
         emit("identity-input", identityInput)
         emit("sha256", digest)
         emit("packet-id", packetID)
+        emit("signed-wire", signedBytes)
         emit("signing-transcript", signingTranscript)
+        emit("relayed-wire", relayedBytes)
         emit("fragment-metadata", try #require(Data(hexString: "00010203040506070001000202aabb")))
         emit("fragment-zero", firstPayload)
         emit("fragment-one", secondPayload)
@@ -79,6 +82,7 @@ struct BitMessagePhase4EvidenceTests {
         #expect(signingTranscript.count == 256)
         #expect(signingTranscript.prefix(signingCore.count) == signingCore)
         #expect(signingTranscript.dropFirst(signingCore.count) == Data(repeating: 0xe6, count: 230))
+        #expect(signedBytes[2] == 7)
         #expect(decodedRelay.signature == signature)
         #expect(relayedBytes[2] == 6)
         #expect(relayedTranscript == signingTranscript)

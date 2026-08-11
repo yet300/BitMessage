@@ -3,8 +3,6 @@ package com.yet.bitmessage.engine.mesh
 import com.yet.bitmessage.foundation.Bytes
 import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.Transition
-import com.yet.bitmessage.protocol.bitchat.BitchatCodec
-import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.DecodedPacket
 import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.transport.api.LinkCapabilities
@@ -213,17 +211,7 @@ class AdmissionReducerTest {
         )
         val engine = MeshEngine(limits)
         val first = driveDecoded(engine, readyState(engine), signedPacket)
-        val secondRequest = requestDecode(engine, first.state, signedPacket)
-        val rejected = engine.reduce(
-            secondRequest.state,
-            MeshEvent.PacketDecoded(
-                correlationId = secondRequest.effect.correlationId,
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                source = secondRequest.effect.source,
-                result = DecodeResult.Success(signedPacket),
-            ),
-        )
+        val rejected = engine.reduce(first.state, MeshFixtures.packetDecoded(signedPacket))
 
         assertEquals(setOf(first.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single().correlationId), rejected.state.pendingAdmissions.keys)
         assertEquals(signedPacket.rawPacket.wireBytes.size, rejected.state.aggregatePendingBytes)
@@ -262,11 +250,6 @@ class AdmissionReducerTest {
         }
     }
 
-    private data class DecodeRequest(
-        val state: MeshState,
-        val effect: MeshEffect.DecodePacket,
-    )
-
     private fun readyState(engine: MeshEngine): MeshState =
         engine.reduce(
             MeshFixtures.state(),
@@ -280,44 +263,12 @@ class AdmissionReducerTest {
             ),
         ).state
 
-    private fun requestDecode(
-        engine: MeshEngine,
-        state: MeshState,
-        packet: DecodedPacket,
-    ): DecodeRequest {
-        val transition = engine.reduce(
-            state,
-            MeshEvent.LinkObserved(
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                event = LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    packet.rawPacket.wireBytes,
-                ),
-            ),
-        )
-        return DecodeRequest(
-            transition.state,
-            assertIs(transition.effects.single()),
-        )
-    }
-
     private fun driveDecoded(
         engine: MeshEngine,
         state: MeshState,
         packet: DecodedPacket,
     ): Transition<MeshState, MeshEffect> {
-        val request = requestDecode(engine, state, packet)
-        return engine.reduce(
-            request.state,
-            MeshEvent.PacketDecoded(
-                correlationId = request.effect.correlationId,
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                source = request.effect.source,
-                result = DecodeResult.Success(packet),
-            ),
-        )
+        return engine.reduce(state, MeshFixtures.packetDecoded(packet))
     }
 
     private fun digestSuccess(correlationId: CorrelationId): MeshEvent.PacketDigestComputed =
@@ -340,29 +291,16 @@ class AdmissionReducerTest {
         )
 
     private fun signedPacketWithPayloadByte(value: Int): DecodedPacket {
-        val wire = signedPacket.rawPacket.wireBytes.copyToByteArray()
-        wire[25] = value.toByte()
-        return decode(Bytes.copyOf(wire))
+        return MeshFixtures.signedPacketWithPayload(Bytes.copyOf(byteArrayOf(value.toByte())))
     }
 
-    private fun decode(wire: Bytes): DecodedPacket =
-        assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(wire)).value
-
     private companion object {
-        val signedPacket: DecodedPacket = decode(
-            Bytes.copyOf(
-                bytes("0202070102030405060708020000000200112233445566774142").copyToByteArray() +
-                    ByteArray(64) { 0x5a },
-            ),
+        val signedPacket: DecodedPacket = MeshFixtures.signedPacket
+        val sha256Digest: Bytes = MeshFixtures.fakeSha256Digest
+        val expectedPacketId: PacketId = PacketId.of(
+            Bytes.copyOf(MeshFixtures.fakeSha256Digest.copyToByteArray().copyOf(PacketId.BYTE_SIZE)),
         )
-        val sha256Digest: Bytes =
-            bytes("25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda")
-        val expectedPacketId: PacketId =
-            PacketId.of(bytes("25429fbd15e2051049307f8e650ae863"))
 
         fun bytes(hex: String): Bytes = MeshFixtures.bytes(hex)
-
-        fun decode(wire: Bytes): DecodedPacket =
-            assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(wire)).value
     }
 }

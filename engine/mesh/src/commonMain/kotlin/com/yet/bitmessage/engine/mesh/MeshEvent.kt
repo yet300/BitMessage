@@ -6,8 +6,8 @@ import com.yet.bitmessage.foundation.Generation
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.foundation.TimerId
 import com.yet.bitmessage.model.LinkId
-import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.DecodedPacket
+import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.EncodeResult
 import com.yet.bitmessage.protocol.bitchat.FragmentPayload
 import com.yet.bitmessage.protocol.bitchat.PacketId
@@ -43,15 +43,27 @@ sealed interface MeshEvent {
         override val generation: Generation,
         override val observedAt: MonotonicTime,
         val event: LinkEvent,
-    ) : MeshEvent
+    ) : MeshEvent {
+        init {
+            require(event !is LinkEvent.PayloadReceived) {
+                "Wire payloads must pass through MeshRuntime and MeshProtocolAdapter before reduction."
+            }
+        }
+    }
 
     data class PacketDecoded(
-        override val correlationId: CorrelationId,
         override val generation: Generation,
         override val observedAt: MonotonicTime,
         val source: PacketSource,
-        val result: DecodeResult<DecodedPacket>,
-    ) : MeshAsyncEvent
+        val packet: DecodedPacket,
+        val signingTranscript: Bytes?,
+    ) : MeshEvent {
+        init {
+            require((packet.signature == null) == (signingTranscript == null)) {
+                "Signed packets require protocol-owned signing evidence; unsigned packets must not carry it."
+            }
+        }
+    }
 
     data class PacketDigestComputed(
         override val correlationId: CorrelationId,

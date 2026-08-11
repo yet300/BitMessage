@@ -5,6 +5,7 @@ import com.yet.bitmessage.engine.mesh.MeshEvent
 import com.yet.bitmessage.engine.mesh.MeshLimits
 import com.yet.bitmessage.engine.mesh.MeshLifecycle
 import com.yet.bitmessage.engine.mesh.MeshState
+import com.yet.bitmessage.engine.mesh.PacketSource
 import com.yet.bitmessage.engine.mesh.SnapshotMap
 import com.yet.bitmessage.foundation.Engine
 import com.yet.bitmessage.foundation.Generation
@@ -13,6 +14,8 @@ import com.yet.bitmessage.foundation.TraceRecord
 import com.yet.bitmessage.foundation.Transition
 import com.yet.bitmessage.foundation.TimerId
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
+import com.yet.bitmessage.protocol.bitchat.DecodeError
+import com.yet.bitmessage.transport.api.LinkEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +44,10 @@ sealed interface SubmitResult {
     data object Backpressured : SubmitResult
 
     data object Closed : SubmitResult
+
+    data class StructuralDecodeRejected(
+        val error: DecodeError,
+    ) : SubmitResult
 }
 
 sealed interface StartResult {
@@ -66,6 +73,7 @@ class MeshRuntime(
     private val lifecycleMutex = Mutex()
     private val mutableState = MutableStateFlow<MeshState?>(null)
     private val mutableDroppedTraceCount = MutableStateFlow(0L)
+    private val mutableStructuralDecodeRejectionCount = MutableStateFlow(0L)
 
     private var activeRun: RunContext? = null
     private var accepting: Boolean = false
@@ -74,6 +82,7 @@ class MeshRuntime(
 
     val state: StateFlow<MeshState?> = mutableState.asStateFlow()
     val droppedTraceCount: StateFlow<Long> = mutableDroppedTraceCount.asStateFlow()
+    val structuralDecodeRejectionCount: StateFlow<Long> = mutableStructuralDecodeRejectionCount.asStateFlow()
 
     val generation: Generation
         get() = mutableState.value?.generation ?: Generation(0)
@@ -144,15 +153,63 @@ class MeshRuntime(
         return try {
             if (!accepting) return SubmitResult.Closed
             val context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
-            val mailbox = context.external
-            val result = mailbox.trySend(event)
-            when {
-                result.isSuccess -> SubmitResult.Accepted
-                result.isClosed -> SubmitResult.Closed
-                else -> SubmitResult.Backpressured
-            }
+            enqueue(context, event)
         } finally {
             lifecycleMutex.unlock()
+        }
+    }
+
+    fun trySubmit(
+        event: LinkEvent,
+        observedAt: MonotonicTime,
+    ): SubmitResult {
+        if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
+        return try {
+            if (!accepting) return SubmitResult.Closed
+            val context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
+            val currentGeneration = requireNotNull(mutableState.value).generation
+            val meshEvent = when (event) {
+                is LinkEvent.PayloadReceived -> {
+                    if (event.bytes.size > limits.maxPendingPacketBytes) {
+                        recordStructuralDecodeRejection()
+                        return SubmitResult.StructuralDecodeRejected(DecodeError.LIMIT_EXCEEDED)
+                    }
+                    when (
+                        val decoded = MeshProtocolAdapter.decode(
+                            generation = currentGeneration,
+                            observedAt = observedAt,
+                            source = PacketSource.Link(event.linkId),
+                            bytes = event.bytes,
+                        )
+                    ) {
+                        is PacketIngress.Accepted -> decoded.event
+                        is PacketIngress.Rejected -> {
+                            recordStructuralDecodeRejection()
+                            return SubmitResult.StructuralDecodeRejected(decoded.error)
+                        }
+                    }
+                }
+                else -> MeshEvent.LinkObserved(
+                    generation = currentGeneration,
+                    observedAt = observedAt,
+                    event = event,
+                )
+            }
+            enqueue(context, meshEvent)
+        } finally {
+            lifecycleMutex.unlock()
+        }
+    }
+
+    private fun enqueue(
+        context: RunContext,
+        event: MeshEvent,
+    ): SubmitResult {
+        val result = context.external.trySend(event)
+        return when {
+            result.isSuccess -> SubmitResult.Accepted
+            result.isClosed -> SubmitResult.Closed
+            else -> SubmitResult.Backpressured
         }
     }
 
@@ -283,10 +340,29 @@ class MeshRuntime(
             when (val effect = envelope.effect) {
                 is MeshEffect.Schedule -> scheduleTimer(context, envelope, effect)
                 is MeshEffect.Cancel -> cancelTimer(context, effect)
+                is MeshEffect.ReinjectPacket -> {
+                    when (
+                        val decoded = MeshProtocolAdapter.decode(
+                            generation = effect.generation,
+                            observedAt = envelope.observedAt,
+                            source = effect.source,
+                            bytes = effect.bytes,
+                        )
+                    ) {
+                        is PacketIngress.Accepted -> context.results.send(decoded.event)
+                        is PacketIngress.Rejected -> recordStructuralDecodeRejection()
+                    }
+                }
                 else -> executeEffect(executor, effect, envelope.observedAt)?.let { event ->
                     context.results.send(event)
                 }
             }
+        }
+    }
+
+    private fun recordStructuralDecodeRejection() {
+        mutableStructuralDecodeRejectionCount.update { current ->
+            if (current == Long.MAX_VALUE) current else current + 1
         }
     }
 

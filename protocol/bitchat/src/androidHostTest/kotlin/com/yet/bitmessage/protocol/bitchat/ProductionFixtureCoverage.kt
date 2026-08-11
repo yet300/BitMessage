@@ -8,6 +8,7 @@ import com.yet.bitmessage.testing.compatibility.FixtureDecisionState
 import com.yet.bitmessage.testing.compatibility.FixtureManifest
 import com.yet.bitmessage.testing.compatibility.FixtureOutcomeStatus
 import java.io.File
+import java.security.MessageDigest
 
 internal object ProductionFixtureCoverage {
     fun create(manifest: FixtureManifest): ProductionFixtureReport {
@@ -49,6 +50,11 @@ internal object ProductionFixtureCoverage {
     }
 
     private fun verifyProductionResult(fixture: CompatibilityFixture) {
+        when (fixture.id) {
+            in PACKET_IDENTITY_FIXTURES -> return verifyPacketIdentity(fixture)
+            in SIGNING_RELAY_FIXTURES -> return verifySigningRelay(fixture)
+            in FRAGMENT_REASSEMBLY_FIXTURES -> return verifyFragmentReassembly(fixture)
+        }
         val result =
             if (fixture.id == "malformed-duplicate-tlv" || fixture.category in ANNOUNCEMENT_CATEGORIES) {
                 AnnouncementCodec.decode(bytes(fixture.wireBytesHex))
@@ -66,6 +72,60 @@ internal object ProductionFixtureCoverage {
         }
     }
 
+    private fun verifyPacketIdentity(fixture: CompatibilityFixture) {
+        val packet = checkNotNull((BitchatCodec.decode(bytes(fixture.wireBytesHex)) as? DecodeResult.Success)?.value)
+        val input = PacketIdentity.input(packet).canonicalBytes
+        check(input.hex() == fixture.semantic("packetIdentityInputHex"))
+        val digest = Bytes.copyOf(MessageDigest.getInstance("SHA-256").digest(input.copyToByteArray()))
+        check(digest.hex() == fixture.semantic("packetIdentitySha256"))
+        check(PacketIdentity.fromSha256(digest).value.hex() == fixture.semantic("packetIdHex"))
+    }
+
+    private fun verifySigningRelay(fixture: CompatibilityFixture) {
+        val packet = checkNotNull((BitchatCodec.decode(bytes(fixture.wireBytesHex)) as? DecodeResult.Success)?.value)
+        check(packet.ttl.toString() == fixture.semantic("receivedTtl"))
+        check(packet.signature?.hex() == fixture.semantic("signatureHex"))
+
+        val transcript = checkNotNull((SigningTranscript.build(packet) as? DecodeResult.Success)?.value)
+        check(transcript.hex() == fixture.signingTranscriptHex)
+        val transcriptHash = MessageDigest.getInstance("SHA-256").digest(transcript.copyToByteArray()).hex()
+        check(transcriptHash == fixture.signingTranscriptSha256)
+
+        val outgoingTtl = fixture.semantic("relayedTtl").toUByte()
+        val relayed = checkNotNull((RelayEncoding.withTtl(packet, outgoingTtl) as? EncodeResult.Success)?.bytes)
+        check(relayed.hex() == fixture.semantic("relayedWireBytesHex"))
+        val relayedPacket = checkNotNull((BitchatCodec.decode(relayed) as? DecodeResult.Success)?.value)
+        check(relayedPacket.signature == packet.signature)
+        check(SigningTranscript.build(relayedPacket) == DecodeResult.Success(transcript))
+    }
+
+    private fun verifyFragmentReassembly(fixture: CompatibilityFixture) {
+        val firstBytes = bytes(fixture.wireBytesHex)
+        val secondBytes = bytes(fixture.semantic("fragmentOneHex"))
+        val first = checkNotNull((FragmentPayloadCodec.decode(firstBytes) as? DecodeResult.Success)?.value)
+        val second = checkNotNull((FragmentPayloadCodec.decode(secondBytes) as? DecodeResult.Success)?.value)
+
+        check(first.id.value.hex() == fixture.semantic("fragmentIdHex"))
+        check(first.index.toString() == fixture.semantic("fragmentIndex"))
+        check(first.total.toString() == fixture.semantic("fragmentTotal"))
+        check("0x%02x".format(first.originalType.value.toInt()) == fixture.semantic("originalType"))
+        check((FragmentPayloadCodec.encode(first) as? EncodeResult.Success)?.bytes == firstBytes)
+        check((FragmentPayloadCodec.encode(second) as? EncodeResult.Success)?.bytes == secondBytes)
+        check(
+            Bytes.copyOf(first.data.copyToByteArray() + second.data.copyToByteArray()).hex() ==
+                fixture.semantic("reassembledWireBytesHex"),
+        )
+    }
+
+    private fun CompatibilityFixture.semantic(id: String): String =
+        checkNotNull(semanticFields.singleOrNull { it.id == id }) {
+            "Missing semantic field $id in $this."
+        }.value
+
+    private fun Bytes.hex(): String = copyToByteArray().hex()
+
+    private fun ByteArray.hex(): String = joinToString("") { byte -> "%02x".format(byte) }
+
     private fun bytes(hex: String): Bytes =
         Bytes.copyOf(
             ByteArray(hex.length / 2) { index ->
@@ -81,6 +141,24 @@ internal object ProductionFixtureCoverage {
         "malformed-empty-input", "malformed-truncated-header", "malformed-unsupported-version", "malformed-truncated-sender",
         "malformed-truncated-recipient", "malformed-invalid-route-length", "malformed-payload-length-mismatch",
         "malformed-oversized-advertised-payload", "malformed-duplicate-tlv",
+        "apple-phase4-packet-identity", "android-phase4-packet-identity",
+        "apple-phase4-signing-relay", "android-phase4-signing-relay",
+        "apple-phase4-fragment-reassembly", "android-phase4-fragment-reassembly",
+    )
+
+    private val PACKET_IDENTITY_FIXTURES = setOf(
+        "apple-phase4-packet-identity",
+        "android-phase4-packet-identity",
+    )
+
+    private val SIGNING_RELAY_FIXTURES = setOf(
+        "apple-phase4-signing-relay",
+        "android-phase4-signing-relay",
+    )
+
+    private val FRAGMENT_REASSEMBLY_FIXTURES = setOf(
+        "apple-phase4-fragment-reassembly",
+        "android-phase4-fragment-reassembly",
     )
 
     private val EXECUTED_REJECTION_ERRORS = mapOf(

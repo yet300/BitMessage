@@ -45,14 +45,13 @@ class RawRetentionTest {
     }
 
     @Test
-    fun signingTranscriptMatchesThePinnedClientEvidence() {
+    fun signingTranscriptConstructionIsTtlInvariant() {
         val decoded = assertIs<DecodeResult.Success<DecodedPacket>>(
             BitchatCodec.decode(bytes("0202030102030405060708000000000200112233445566774142")),
         ).value
-        val core = bytes("0202000102030405060708000000000200112233445566774142")
-        val expected = Bytes.copyOf(core.copyToByteArray() + ByteArray(230) { 0xe6.toByte() })
+        val transcript = assertIs<DecodeResult.Success<Bytes>>(SigningTranscript.build(decoded))
 
-        assertEquals(DecodeResult.Success(expected), SigningTranscript.build(decoded))
+        assertEquals(transcript, SigningTranscript.build(decoded.copy(ttl = 7u)))
     }
 
     private fun bytes(hex: String): Bytes =

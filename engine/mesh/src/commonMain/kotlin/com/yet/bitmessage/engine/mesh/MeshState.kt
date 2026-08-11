@@ -80,6 +80,7 @@ sealed interface AdmissionStage {
 data class PendingAdmission(
     val source: PacketSource,
     val packet: DecodedPacket,
+    val signingTranscript: Bytes?,
     val stage: AdmissionStage,
     val retainedBytes: Int,
     val expiresAt: MonotonicTime,
@@ -89,6 +90,9 @@ data class PendingAdmission(
         require(retainedBytes > 0) { "Pending admission bytes must be positive." }
         require(retainedBytes == packet.rawPacket.wireBytes.size) {
             "Pending admission bytes must match the retained packet representation."
+        }
+        require((packet.signature == null) == (signingTranscript == null)) {
+            "Pending signed packets require signing evidence; unsigned packets must not carry it."
         }
     }
 }
@@ -210,7 +214,6 @@ data class MeshState(
 enum class MeshOperation(
     internal val token: String,
 ) {
-    DECODE_PACKET("decode"),
     COMPUTE_DIGEST("digest"),
     VERIFY_SIGNATURE("verify"),
     DECODE_FRAGMENT("fragment"),

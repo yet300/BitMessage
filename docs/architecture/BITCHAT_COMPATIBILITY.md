@@ -1,7 +1,7 @@
 # BitChat Compatibility Baseline
 
-Status: Phase 1 audit baseline plus Phase 3 evidence-first codec; not protocol parity
-Analysis date: 2026-08-08
+Status: Phase 1 canonical baseline extended by Phase 4 pinned evidence; not protocol parity
+Analysis date: 2026-08-11
 Compatibility rule: executable cross-client evidence outranks prose and open proposals.
 
 ## 1. Pinned evidence
@@ -11,7 +11,7 @@ Compatibility rule: executable cross-client evidence outranks prose and open pro
 | [permissionlesstech/bitchat](https://github.com/permissionlesstech/bitchat) | `main` | `1f59e814f90c3f489f48d68262cb1bf640bf6181` | `2026-08-01T14:51:31+02:00` | Apple client; commit “Keyboard navigation (#1542)”; latest observed tag `v1.7.1`. |
 | [permissionlesstech/bitchat-android](https://github.com/permissionlesstech/bitchat-android) | `main` | `094657efa0aabbb6f71c9050149d1d01aee96400` | `2026-08-03T00:18:52+02:00` | Android client; merge of PR #861; latest observed tag `1.7.4`. |
 | [Reedyuk/blue-falcon](https://github.com/Reedyuk/blue-falcon) | `3.7.0` | `0338bb6b4ef6653179c5363946986ee838cd3c6f` | `2026-08-06T13:39:48+01:00` | Tag and `master` were identical on the audit date. |
-| Current BitMessage | `phase-1-compatibility-baseline` | Phase 3 evidence-first implementation | local | Pure `:protocol:bitchat` codec; no runtime engine or product integration. |
+| Current BitMessage | `codex/phase-4-deterministic-mesh-engine` | Phase 4 acceptance remediation | local | Pure `:protocol:bitchat` codec plus transport-neutral link contracts and deterministic mesh engine/runtime. |
 | Historical donor | `bitMessage/main` | `10feab049becf4140c8bf10e0d9428c89222840f` | 2026-07-15 | Separate local repository; architecture is reference-only, with subsystem salvage governed by the [historical salvage audit](HISTORICAL_BITMESSAGE_SALVAGE.md). |
 
 The GitHub pull-request audit captured the most recently updated 100 PRs from each repository, including open, draft, merged and closed work. PR status in this document is as observed on 2026-08-07; refresh before adoption.
@@ -114,20 +114,28 @@ Advertisement is a hint. Security-sensitive behavior is enabled only after a sig
 
 ## 4. Implemented compatibility profile slice
 
-`BitchatBaseline2026_08` remains defined by literal fixtures from both pinned clients. Phase 3 implements the evidence-first wire slice below:
+`BitchatBaseline2026_08` remains defined by literal fixtures from both pinned clients. Phase 3 implements the evidence-first wire slice below, and Phase 4 extends the same canonical corpus rather than maintaining protocol or mesh known answers as a second authority:
 
 - v1/v2 public-message (`0x02`) outer packets, exact eight-byte sender/recipient values, v1/v2 length fields, and the literal source-route layout; payload and route bounds are 16 MiB and 32 entries before allocation;
 - exact round-trip encoding for the 10 resolved Apple/Android outer literals and the four resolved legacy/extended announcement literals;
 - bounded TLV parsing for resolved announcement fields, original TLV ordering, unknown-TLV preservation, duplicate rejection, and one-to-eight-byte capability low-64 retention;
 - raw packet, 64-byte signature, and received-compressed-payload retention without signing, verification, decompression, recompression, or a padding policy;
-- 23 executed fixture outcomes in the separate `:protocol:bitchat:productionCompatibilityCheck` report. Five known fixture/layout contradictions remain explicitly `EVIDENCE_LAYOUT_CONFLICT`.
+- 29 executed fixture outcomes in the separate `:protocol:bitchat:productionCompatibilityCheck` report. Five known fixture/layout contradictions remain explicitly `EVIDENCE_LAYOUT_CONFLICT`.
 
-Phase 4 added a separate pinned reproduction harness without modifying the Phase 1 corpus. Both pinned production clients reproduced these exact facts:
+Phase 4 added six resolved fixtures to the canonical corpus. The pinned Apple and Android harnesses independently reproduce the same outputs, and each fixture records acceptance by the opposite client:
 
-- packet identity input is `type || sender(8) || timestamp(BE u64) || payload`; SHA-256 is `25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda`, and the 16-byte wire packet ID is `25429fbd15e2051049307f8e650ae863`;
-- the unpadded fixed-TTL/signature-cleared core is `0202000102030405060708000000000200112233445566774142`, while the actual signed transcript is 256 bytes: that 26-byte core plus 230 bytes of `e6` deterministic block padding;
-- supported uncompressed, unpadded relay changes only TTL byte offset 2 and remains compatible with the same fixed-TTL signing transcript;
-- fragment metadata is the 13-byte prefix `00010203040506070001000202` and the reproduced complete payload vector is `00010203040506070001000202aabb`; out-of-order fragments reassemble in ascending index order.
+| Source | Commit | Upstream source and local harness | Fixture ID | Canonical content hash | Production behavior proved |
+|---|---|---|---|---|---|
+| Apple | `1f59e814f90c3f489f48d68262cb1bf640bf6181` | `bitchat/Sync/PacketIdUtil.swift`; `tools/upstream-compat/apple/BitMessagePhase4EvidenceTests.swift` | `apple-phase4-packet-identity` | `06d591d3db22aa84c00bc87f6161be0259d21a15bdccc04e8389beff377f1fb6` | Packet-identity input, SHA-256 digest, and 16-byte packet-ID construction; independently reproduced by Android. |
+| Android | `094657efa0aabbb6f71c9050149d1d01aee96400` | `app/src/main/java/com/bitchat/android/sync/PacketIdUtil.kt`; `tools/upstream-compat/android/BitMessagePhase4EvidenceTest.kt` | `android-phase4-packet-identity` | `00b0133a31ddbd46a8114f7a6a48ce255fe65197cb2ba6445c5f86e18d63c874` | The same packet-identity construction; independently reproduced by Apple. |
+| Apple | `1f59e814f90c3f489f48d68262cb1bf640bf6181` | `localPackages/BitFoundation/Sources/BitFoundation/BitchatPacket.swift`; Apple Phase 4 harness | `apple-phase4-signing-relay` | `2a798e38cb256898d5d2086731117a504093a4a183f0f9863309e5d4e7a29ee9` | Exact 256-byte signing transcript, signature preservation, and the concrete received-TTL 7 to relayed-TTL 6 mutation; independently reproduced by Android. |
+| Android | `094657efa0aabbb6f71c9050149d1d01aee96400` | `app/src/main/java/com/bitchat/android/protocol/BinaryProtocol.kt`; Android Phase 4 harness | `android-phase4-signing-relay` | `6488e9cc9cfac67cf4f1be34fad114464b2703c3e1ac033943598775d7893e65` | The same transcript and mutable-TTL signing behavior; independently reproduced by Apple. |
+| Apple | `1f59e814f90c3f489f48d68262cb1bf640bf6181` | `bitchat/Services/BLE/BLEFragmentAssemblyBuffer.swift`; Apple Phase 4 harness | `apple-phase4-fragment-reassembly` | `bc6c50566881af2ae2e983a7dc0c89be06578a22b0f4136eefcf80207dd11df5` | Positive fragment encoding/decoding and ascending-index reassembly; independently reproduced by Android. |
+| Android | `094657efa0aabbb6f71c9050149d1d01aee96400` | `app/src/main/java/com/bitchat/android/model/FragmentPayload.kt`; Android Phase 4 harness | `android-phase4-fragment-reassembly` | `2fd5334b7bcbeb0832a29b9d2c3d6c8243468c22c672df8ec1255dd621206075` | The same positive fragment behavior; independently reproduced by Apple. |
+
+The security-critical correction from a 26-byte unsigned core to the actual 256-byte signing transcript is therefore canonical and executed by the production compatibility gate. The transcript's canonical SHA-256 is recorded in both signing fixtures.
+
+The dual-upstream evidence proves only the selected concrete TTL mutation `7 -> 6`. It does **not** prove that 7 is a universal protocol maximum or that an untrusted received value of 255 must map to 6. `MeshEngine` currently caps received TTL at 7 as the explicitly named BitMessage-local resource policy `RelayPolicy.LOCAL_MAX_RECEIVED_TTL`; `255 -> 6` is a test of that local policy, not a compatibility claim. No fixture invents cross-client authority for it.
 
 The production `:protocol:bitchat` API now owns `PacketIdentity`, `SigningTranscript`, `RelayEncoding`, and `FragmentPayloadCodec`; `:engine:mesh` consumes those APIs rather than reproducing wire layouts. This still does not establish full protocol parity. Compressed or padded signed relay remains blocked by the unmerged paired fixes, exact Apple/Android fanout parity remains unresolved, and Phase 4 does not relay outer fragment packets. Private/Noise semantics, sync, Nostr, file/media, capability negotiation, and peer rotation remain outside the Phase 4 profile.
 

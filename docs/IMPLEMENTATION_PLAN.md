@@ -225,10 +225,10 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 | 3.3 | **Complete.** v1 decode against Apple/Android literal vectors. | 3.2 | codec | literal and hostile corpus | Exact fields/raw representation and resolved reject reasons. |
 | 3.4 | **Complete.** v1 encode against literal vectors; decode-only aliases never emitted. | 3.3 | codec | byte equality | Only literal-supported packets re-encode. |
 | 3.5 | **Complete.** v2 length and source routes; neighbor ambiguity remains report-blocked. | 3.4 | codec/profile | route vectors and malformed cases | No mesh route policy or neighbor-list inference. |
-| 3.6 | **Complete, bounded.** Raw 64-byte signature retention; transcript construction is explicitly profile-blocked without a literal transcript vector. | 3.4–3.5 | codec input values | signature length/retention tests | No crypto or invented canonical transcript. |
+| 3.6 | **Complete, bounded; extended in Phase 4.** Raw 64-byte signature retention plus canonical 256-byte supported-path transcript construction from paired pinned fixtures. | 3.4–3.5 | codec input values | signature retention plus production canonical-fixture gate | No crypto or invented transcript; unresolved compressed/padded cases remain blocked. |
 | 3.7 | **Complete, bounded.** Raw compressed-payload retention and emission refusal; padding/decompression policy remains blocked. | 3.6 | codec | raw-retention tests | No implicit recompression, decompression, or provider dependency. |
 | 3.8 | **Complete, scoped.** Legacy/extended announcement TLVs only; messages, receipts, fragments, and sync payloads remain later phases. | 3.3–3.7 | payload package | literal announcement corpus | Unknown TLVs survive; duplicate TLVs reject. |
-| 3.9 | **Complete.** Fresh `productionCompatibilityCheck` creates a deterministic 46-fixture status report. | 3.8 | test/report tooling | Phase 3 production gate | Report is generated under `build/`; the unchanged Phase 1 gate remains separate. |
+| 3.9 | **Complete; extended in Phase 4.** Fresh `productionCompatibilityCheck` creates a deterministic 52-fixture status report and executes 29 resolved production outcomes. | 3.8 | test/report tooling | Phase 1–4 production gate | Report is generated under `build/`; six appended Phase 4 fixtures use the existing canonical corpus and hash validation. |
 
 ## 7. Phase 4 — Deterministic MeshEngine foundation
 
@@ -237,11 +237,11 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 - **Non-goals:** Bluetooth, durable delivery retry, full sync/courier, Noise primitives.
 - **Dependencies:** Phase 3 and reducer primitives.
 - **Modules affected:** new `:transport:api`, `:engine:mesh`.
-- **Core types/interfaces:** `LinkEvent/Command/Result`, `MeshState/Event/Effect/Engine`, `PeerBinding`, `FragmentStream`.
+- **Core types/interfaces:** `LinkEvent/Command/Result`, `MeshProtocolAdapter`, `MeshState/Event/Effect/Engine`, `PeerBinding`, `FragmentStream`.
 - **State owner:** one serialized MeshEngine actor; reducer itself is pure.
 - **Platform responsibilities:** none beyond future link event execution.
 - **Tests:** transition tables, duplicate/TTL/signature pipeline, fragment limits/expiry, stale results, adversarial event properties.
-- **Compatibility gate:** relay bytes/signature/TTL and policy scenarios match pinned profile.
+- **Compatibility gate:** canonical packet identity, 256-byte transcript, concrete `7 -> 6` relay mutation, and positive fragments execute against production APIs. The universal TTL cap remains local policy.
 - **Completion criteria:** in-memory scripted link can receive/relay baseline packets deterministically; all collections bounded.
 - **Risks:** giant engine, actor creation before validation, policy/codec coupling, relay amplification.
 - **Rollback:** engine not connected to platform; remove module/wiring.
@@ -256,7 +256,7 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 | 4.4 | Bounded fragment reassembly and expiry. | 4.2 | engine:mesh | reorder/duplicate/conflict/quota tests | Global/per-peer memory limits asserted. |
 | 4.5 | Typed dispatch and runtime actor lifecycle. | 4.1–4.4 | engine runtime composition | start/stop/restart/cancellation tests | No post-close events or constructor launches. |
 
-Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded link contracts. `:engine:mesh` contains the pure reducer, immutable bounded state, profile-grounded packet identity/admission/TTL/relay/fragment policy, generated hostile-sequence tests, a non-zero `meshEngineCheck`, and an explicit `MeshRuntime` with bounded channels and permanent close. The Phase 1 corpus is unchanged. Compressed signed relay, exact cross-client fallback fanout parity, and outer-fragment relay remain explicitly blocked; no physical transport or Phase 5 simulator was added.
+Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded link contracts. `:engine:mesh` contains the pure reducer, immutable bounded state, profile-grounded packet identity/admission/relay/fragment policy, generated hostile-sequence tests, a non-zero `meshEngineCheck`, and an explicit `MeshRuntime` with bounded channels and permanent close. Link payload bytes are decoded by `MeshRuntime`/`MeshProtocolAdapter` before `MeshEvent.PacketDecoded` enters the reducer; failed structural decode cannot mutate `MeshState`. `DecodePacket` is not a mesh effect, while completed fragments use runtime-owned `ReinjectPacket`. The 46 pre-Phase-4 fixtures are unchanged and six cross-validated Phase 4 fixtures extend the same corpus. TTL 7 as a general cap and `255 -> 6` are explicitly local resource policy, not dual-upstream compatibility truth. Compressed signed relay, exact cross-client fallback fanout parity, and outer-fragment relay remain blocked; no physical transport or Phase 5 simulator was added.
 
 ## 8. Phase 5 — Deterministic simulator
 
@@ -657,11 +657,11 @@ The completed Phase 1–4 sequence is:
 6. **2.2 — Validated IDs and bounded bytes: complete.**
 7. **2.3 — Time, scheduler, entropy contracts and virtual runtime: complete.**
 8. **2.4 — Generic reducer/transition and typed redacted trace kernel: complete.**
-9. **3.1–3.9 — Evidence-first BitChat wire codec: complete.** Its original Phase 3 scope executes only 23 resolved fixture outcomes and records every other fixture as metadata-only, blocked, later-phase, or evidence-layout conflict; it contains no mesh runtime policy.
+9. **3.1–3.9 — Evidence-first BitChat wire codec: complete.** Its original Phase 3 scope executes 23 resolved fixture outcomes. Phase 4 appends and executes six more canonical outcomes, for 29 of 52 fixtures; every other fixture remains metadata-only, blocked, later-phase, or an evidence-layout conflict. The codec contains no mesh runtime policy.
 10. **4.1 — Link and mesh contracts: complete.** `LinkId` remains in `:core:model`; `:transport:api` contains no BitChat types.
-11. **4.2 — Admission, packet identity, dedup, and TTL: complete.** Authentication precedes authoritative dedup; all attacker-influenced state is bounded and expiring.
+11. **4.2 — Admission, packet identity, dedup, and TTL: complete.** Authentication precedes authoritative dedup; all attacker-influenced state is bounded and expiring. The concrete `7 -> 6` relay case is canonical, while the general TTL cap remains explicitly local policy.
 12. **4.3 — Relay, jitter, and source-route policy: complete.** Entropy and timers are explicit effects; fallback fanout is deterministic and compatibility uncertainty is isolated.
 13. **4.4 — Fragment reassembly: complete.** Stream/count/byte quotas, expiry, duplicate/conflict semantics, and explicit full-pipeline reinjection are tested.
-14. **4.5 — Serialized runtime lifecycle: complete.** Constructor inertness, bounded pressure, ordering, timer cancellation, stop/restart generation, permanent close, and cancellation propagation are tested.
+14. **4.5 — Serialized runtime lifecycle: complete.** Constructor inertness, pre-reducer codec adaptation, structural-failure isolation, bounded pressure, ordering, timer cancellation, stop/restart generation, permanent close, and cancellation propagation are tested.
 
 **Next task: Phase 5 is not started.** Phase 4 provides no simulated or physical network, crypto implementation, persistence, reliable delivery, sync engine, media engine, or application composition.

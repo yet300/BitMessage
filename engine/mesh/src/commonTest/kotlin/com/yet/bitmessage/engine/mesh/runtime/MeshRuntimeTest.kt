@@ -11,8 +11,6 @@ import com.yet.bitmessage.engine.mesh.MeshEngine
 import com.yet.bitmessage.engine.mesh.MeshState
 import com.yet.bitmessage.foundation.Bytes
 import com.yet.bitmessage.foundation.Engine
-import com.yet.bitmessage.protocol.bitchat.BitchatCodec
-import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.FragmentPayloadCodec
 import com.yet.bitmessage.protocol.bitchat.RelayEncoding
 import com.yet.bitmessage.transport.api.LinkCapabilities
@@ -181,21 +179,17 @@ class MeshRuntimeTest {
         assertEquals(
             SubmitResult.Accepted,
             runtime.trySubmit(
-                MeshEvent.LinkObserved(
-                    generation = runtime.generation,
-                    observedAt = MeshFixtures.now,
-                    event = LinkEvent.PayloadReceived(
-                        MeshFixtures.linkA,
-                        MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                    ),
+                LinkEvent.PayloadReceived(
+                    MeshFixtures.linkA,
+                    MeshFixtures.broadcastPacket.rawPacket.wireBytes,
                 ),
+                MeshFixtures.now,
             ),
         )
         runCurrent()
 
         assertEquals(
             listOf(
-                MeshEffect.DecodePacket::class,
                 MeshEffect.ComputePacketDigest::class,
                 MeshEffect.PublishPublicPayload::class,
                 MeshEffect.RequestEntropy::class,
@@ -215,14 +209,11 @@ class MeshRuntimeTest {
         runtime.trySubmit(opened(runtime.generation))
         runCurrent()
         runtime.trySubmit(
-            MeshEvent.LinkObserved(
-                generation = runtime.generation,
-                observedAt = MeshFixtures.now,
-                event = LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                ),
+            LinkEvent.PayloadReceived(
+                MeshFixtures.linkA,
+                MeshFixtures.broadcastPacket.rawPacket.wireBytes,
             ),
+            MeshFixtures.now,
         )
         runCurrent()
         assertEquals(1, assertNotNull(runtime.state.value).admittedPackets.size)
@@ -261,17 +252,13 @@ class MeshRuntimeTest {
         runtime.trySubmit(opened(oldGeneration))
         runCurrent()
         runtime.trySubmit(
-            MeshEvent.LinkObserved(
-                generation = oldGeneration,
-                observedAt = MeshFixtures.now,
-                event = LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                ),
+            LinkEvent.PayloadReceived(
+                MeshFixtures.linkA,
+                MeshFixtures.broadcastPacket.rawPacket.wireBytes,
             ),
+            MeshFixtures.now,
         )
         runCurrent()
-        val oldDecode = assertIs<MeshEffect.DecodePacket>(executor.effects.first())
         assertEquals(1, assertNotNull(runtime.state.value).admittedPackets.size)
 
         runtime.stop(MeshFixtures.now.plus(1.minutes))
@@ -293,12 +280,9 @@ class MeshRuntimeTest {
         assertEquals(
             SubmitResult.Accepted,
             runtime.trySubmit(
-                MeshEvent.PacketDecoded(
-                    correlationId = oldDecode.correlationId,
-                    generation = oldDecode.generation,
+                MeshFixtures.packetDecoded(
+                    eventGeneration = oldGeneration,
                     observedAt = MeshFixtures.now.plus(2.minutes),
-                    source = oldDecode.source,
-                    result = DecodeResult.Success(MeshFixtures.broadcastPacket),
                 ),
             ),
         )
@@ -313,11 +297,10 @@ class MeshRuntimeTest {
 
     @Test
     fun cancellationIsRethrownWhileOrdinaryFailuresBecomeTypedEvents() = runTest {
-        val effect = MeshEffect.DecodePacket(
+        val effect = MeshEffect.ComputePacketDigest(
             correlationId = com.yet.bitmessage.foundation.CorrelationId.of("mesh:3:decode:0"),
             generation = MeshFixtures.generation,
-            source = com.yet.bitmessage.engine.mesh.PacketSource.Link(MeshFixtures.linkA),
-            bytes = MeshFixtures.broadcastPacket.rawPacket.wireBytes,
+            input = com.yet.bitmessage.protocol.bitchat.PacketIdentity.input(MeshFixtures.broadcastPacket),
         )
         val cancellation = CancellationException("cancelled")
         var cancellationObserved = false
@@ -348,13 +331,6 @@ class MeshRuntimeTest {
         override suspend fun execute(effect: MeshEffect): MeshEvent? {
             effects += effect
             return when (effect) {
-                is MeshEffect.DecodePacket -> MeshEvent.PacketDecoded(
-                    correlationId = effect.correlationId,
-                    generation = effect.generation,
-                    observedAt = MeshFixtures.now,
-                    source = effect.source,
-                    result = BitchatCodec.decode(effect.bytes),
-                )
                 is MeshEffect.ComputePacketDigest -> MeshEvent.PacketDigestComputed(
                     correlationId = effect.correlationId,
                     generation = effect.generation,
@@ -405,6 +381,7 @@ class MeshRuntimeTest {
                     ),
                 )
                 is MeshEffect.CloseLink,
+                is MeshEffect.ReinjectPacket,
                 is MeshEffect.PublishPublicPayload,
                 is MeshEffect.Schedule,
                 is MeshEffect.Cancel,
@@ -429,9 +406,7 @@ class MeshRuntimeTest {
     }
 
     private companion object {
-        val sha256Digest: Bytes = MeshFixtures.bytes(
-            "25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda",
-        )
+        val sha256Digest: Bytes = MeshFixtures.fakeSha256Digest
 
         fun opened(generation: com.yet.bitmessage.foundation.Generation): MeshEvent.LinkObserved =
             MeshEvent.LinkObserved(

@@ -10,6 +10,7 @@ import com.yet.bitmessage.model.LinkId
 import com.yet.bitmessage.protocol.bitchat.BitchatCodec
 import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.DecodedPacket
+import com.yet.bitmessage.protocol.bitchat.EncodeResult
 import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.protocol.bitchat.RelayEncoding
 import com.yet.bitmessage.protocol.bitchat.SigningTranscript
@@ -28,7 +29,7 @@ import kotlin.time.Duration.Companion.minutes
 
 class RelayPolicyTest {
     @Test
-    fun ttlBoundariesSeparateLocalDispatchFromRelay() {
+    fun localRelayTtlPolicyCapsUntrustedLargeValues() {
         assertEquals(null, RelayPolicy.outgoingTtl(0u))
         assertEquals(null, RelayPolicy.outgoingTtl(1u))
         assertEquals(1u.toUByte(), RelayPolicy.outgoingTtl(2u))
@@ -62,7 +63,7 @@ class RelayPolicyTest {
     }
 
     @Test
-    fun localDispatchStillOccursAtTtlZeroAndOneWhileRelayStartsAtTwo() {
+    fun localDispatchIsIndependentOfTheLocalRelayTtlPolicy() {
         val engine = MeshEngine()
         val ttlZero = admitUnsigned(engine, readyState(engine), packetWithTtl(0u))
         val ttlOne = admitUnsigned(engine, readyState(engine), packetWithTtl(1u))
@@ -577,27 +578,8 @@ class RelayPolicyTest {
         engine: MeshEngine,
         state: MeshState,
         packet: DecodedPacket,
-    ): Transition<MeshState, MeshEffect> {
-        val received = engine.reduce(
-            state,
-            MeshEvent.LinkObserved(
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                event = LinkEvent.PayloadReceived(MeshFixtures.linkA, packet.rawPacket.wireBytes),
-            ),
-        )
-        val decode = received.effects.filterIsInstance<MeshEffect.DecodePacket>().single()
-        return engine.reduce(
-            received.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decode.correlationId,
-                generation = decode.generation,
-                observedAt = MeshFixtures.now,
-                source = decode.source,
-                result = DecodeResult.Success(packet),
-            ),
-        )
-    }
+    ): Transition<MeshState, MeshEffect> =
+        engine.reduce(state, MeshFixtures.packetDecoded(packet))
 
     private fun existingRelay(sourcePeer: WirePeerId): ScheduledRelay {
         val packetId = PacketId.of(bytes("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
@@ -649,24 +631,9 @@ class RelayPolicyTest {
         packet: DecodedPacket,
         observedAt: MonotonicTime = MeshFixtures.now,
     ): Transition<MeshState, MeshEffect> {
-        val received = engine.reduce(
-            state,
-            MeshEvent.LinkObserved(
-                generation = MeshFixtures.generation,
-                observedAt = observedAt,
-                event = LinkEvent.PayloadReceived(MeshFixtures.linkA, packet.rawPacket.wireBytes),
-            ),
-        )
-        val decode = assertIs<MeshEffect.DecodePacket>(received.effects.single())
         val decoded = engine.reduce(
-            received.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decode.correlationId,
-                generation = MeshFixtures.generation,
-                observedAt = observedAt,
-                source = decode.source,
-                result = DecodeResult.Success(packet),
-            ),
+            state,
+            MeshFixtures.packetDecoded(packet = packet, observedAt = observedAt),
         )
         val digest = decoded.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
         return engine.reduce(
@@ -681,9 +648,8 @@ class RelayPolicyTest {
     }
 
     private fun packetWithTtl(ttl: UByte): DecodedPacket {
-        val bytes = MeshFixtures.broadcastPacket.rawPacket.wireBytes.copyToByteArray()
-        bytes[2] = ttl.toByte()
-        return decode(Bytes.copyOf(bytes))
+        val encoded = assertIs<EncodeResult.Success>(BitchatCodec.encode(MeshFixtures.broadcastPacket.copy(ttl = ttl)))
+        return decode(encoded.bytes)
     }
 
     private fun Transition<MeshState, MeshEffect>.entropyRequest(): MeshEffect.RequestEntropy =
@@ -708,26 +674,15 @@ class RelayPolicyTest {
         assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(bytes)).value
 
     private companion object {
-        val sha256Digest: Bytes =
-            bytes("25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda")
+        val sha256Digest: Bytes = MeshFixtures.fakeSha256Digest
         val localRecipientPacket: DecodedPacket = decode(
             bytes("02020301020304050607080100000002001122334455667700112233445566774142"),
         )
         val nonlocalRecipientPacket: DecodedPacket = decode(
             bytes("0202030102030405060708010000000200112233445566778899aabbccddeeff4142"),
         )
-        val fragmentPacket: DecodedPacket = decode(
-            bytes(
-                "0220030102030405060708000000001a0011223344556677" +
-                    "0001020304050607000000020202020301020304050607080000",
-            ),
-        )
-        val signedPacket: DecodedPacket = decode(
-            Bytes.copyOf(
-                bytes("0202070102030405060708020000000200112233445566774142").copyToByteArray() +
-                    ByteArray(64) { 0x5a },
-            ),
-        )
+        val fragmentPacket: DecodedPacket = MeshFixtures.fragmentZeroPacket
+        val signedPacket: DecodedPacket = MeshFixtures.signedPacket
 
         fun bytes(hex: String): Bytes = MeshFixtures.bytes(hex)
 

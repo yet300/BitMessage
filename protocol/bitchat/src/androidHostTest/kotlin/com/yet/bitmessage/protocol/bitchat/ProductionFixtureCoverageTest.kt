@@ -14,7 +14,7 @@ class ProductionFixtureCoverageTest {
 
         assertEquals(manifest.fixtures.map { it.id }.toSet(), report.entries.map { it.fixtureId }.toSet())
         assertEquals(manifest.fixtures.size, report.entries.size)
-        assertEquals(23, report.entries.count { it.status == ProductionCoverageStatus.EXECUTED })
+        assertEquals(29, report.entries.count { it.status == ProductionCoverageStatus.EXECUTED })
         assertEquals(
             setOf(
                 "malformed-compression-size-abuse",
@@ -30,7 +30,7 @@ class ProductionFixtureCoverageTest {
         val reportDirectory = checkNotNull(System.getProperty(REPORT_DIRECTORY_PROPERTY)) {
             "Missing production coverage report directory."
         }
-        val reportFile = File(reportDirectory, "phase3-production-fixture-coverage.json")
+        val reportFile = File(reportDirectory, "phase1-4-production-fixture-coverage.json")
         ProductionFixtureCoverage.write(report, reportFile)
         assertTrue(reportFile.isFile)
     }

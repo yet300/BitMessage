@@ -1,6 +1,6 @@
 # Phase 4 Deterministic MeshEngine Design
 
-Status: approved and implemented through tasks 4.1–4.5; final verification pending
+Status: approved and implemented; Phase 4 acceptance remediation in progress
 
 ## Goal
 
@@ -8,7 +8,7 @@ Implement the smallest deterministic Kotlin Multiplatform mesh engine that can a
 
 The engine is a pure state transition system surrounded by a lifecycle-aware runtime. Every nondeterministic operation is represented as an explicit effect and returns through a correlated event. Authenticated admission precedes authoritative deduplication, dispatch, and relay.
 
-Phase 4 is complete only when each implemented compatibility-sensitive behavior is supported by pinned current-client evidence. Existing Phase 1 fixtures, expected results, provenance, and hashes remain unchanged.
+Phase 4 is complete only when each implemented compatibility-sensitive behavior is supported by pinned current-client evidence. Existing canonical fixtures are not changed to make production pass. The canonical corpus may be extended with newly reproduced, hash-locked evidence.
 
 ## Scope and evidence boundary
 
@@ -37,7 +37,7 @@ Phase 4 does not include:
 
 ## Compatibility evidence procedure
 
-The accepted Phase 1 compatibility corpus is immutable. Phase 4 may add narrowly scoped test vectors outside that corpus when they are copied from, or independently reproduced against, the pinned current Apple and Android clients. Such vectors must record:
+The accepted Phase 1 compatibility corpus is the sole normative literal authority. Phase 4 extends that corpus only with vectors independently reproduced against the pinned current Apple and Android clients. Compatibility-significant literals must not remain solely in protocol or mesh tests. Each added fixture records:
 
 - upstream repository and exact commit SHA;
 - source file and symbol that establish the behavior;
@@ -129,7 +129,7 @@ The same initial state and event sequence must produce structurally equal transi
 
 Effects include:
 
-- decode or encode a BitChat packet;
+- hand reassembled bytes back to the runtime protocol adapter, or encode a BitChat packet;
 - compute a packet ID from a protocol-owned canonical input;
 - verify a signature over protocol-owned signing bytes;
 - request entropy for relay jitter;
@@ -189,11 +189,12 @@ A scheduled relay records the admitted packet ID, immutable received representat
 
 ## Admission pipeline
 
-Admission proceeds through explicit events and effects:
+Admission begins at the runtime protocol boundary and then proceeds through explicit events and effects:
 
 ```text
-payload received
-  -> decode packet
+transport payload received
+  -> runtime protocol adapter decodes packet and retains raw/signing evidence
+  -> successful PacketDecoded event
   -> reserve bounded pending admission
   -> compute packet ID
   -> construct protocol signing evidence
@@ -203,7 +204,7 @@ payload received
   -> dispatch locally and/or schedule relay
 ```
 
-Structural decode occurs before pending reservation is finalized so malformed packets cannot consume long-lived admission entries. The reducer enforces global and per-link limits before accepting proportional work.
+Structural decode occurs outside the reducer. A decode or signing-evidence failure produces no mesh event, cannot mutate `MeshState`, and cannot reserve pending admission. The reducer enforces global and per-link limits before accepting proportional work from a successfully decoded event.
 
 When a signature is required, verification success is the admission boundary. A verification failure removes pending state, cancels related timers, emits a redacted rejection trace, and produces neither admitted deduplication, dispatch, nor relay.
 
@@ -226,7 +227,7 @@ The result is represented by a dedicated fixed-size value, not arbitrary `Bytes`
 
 Signing bytes also belong to `:protocol:bitchat`. The protocol must build verification evidence from retained received bytes, not by decoding and re-encoding foreign compressed or signed data.
 
-The pinned Apple and Android `toBinaryDataForSigning` helpers agree on the exact supported-path construction: clear the signature, fix TTL to zero, encode the unsigned packet, then apply their shared deterministic padding algorithm. For the Phase 4 known answer, the unsigned v2 core is the 26-byte value `0202000102030405060708000000000200112233445566774142`; both clients sign a 256-byte transcript consisting of that core followed by 230 bytes of `e6`. The 26-byte value alone is not the signing transcript. This evidence amendment was approved after the initial harness exposed the distinction. Foreign compressed packets and packets carrying the unresolved `0x10` flag remain profile-blocked.
+The pinned Apple and Android `toBinaryDataForSigning` helpers agree on the exact supported-path construction: clear the signature, fix TTL to zero, encode the unsigned packet, then apply their shared deterministic padding algorithm. Canonical fixtures `apple-phase4-signing-relay` and `android-phase4-signing-relay` record the exact known answer and its hash: the actual signed transcript is 256 bytes, not the 26-byte unsigned core initially asserted by the Phase 4 harness. Foreign compressed packets and packets carrying the unresolved `0x10` flag remain profile-blocked.
 
 Relay encoding may change TTL only through a protocol operation that preserves the signing-relevant representation. If the pinned evidence does not prove this invariant, signed packets may be locally admitted but signed relay remains profile-blocked.
 
@@ -271,12 +272,12 @@ TTL is treated as an unsigned wire value and converted through checked integer o
 
 - Local consumption is independent of relay TTL.
 - TTL 0 and TTL 1 packets may be admitted and locally dispatched, but are not relayed.
-- The relay input is capped at 7.
-- The outgoing TTL is `min(received TTL, 7) - 1` when relay is allowed.
+- The relay input is capped by the BitMessage-local policy `RelayPolicy.LOCAL_MAX_RECEIVED_TTL`, currently 7.
+- The outgoing TTL is `min(received TTL, LOCAL_MAX_RECEIVED_TTL) - 1` when relay is allowed.
 - Subtraction is never performed for a value below 2, preventing underflow.
 - Tests cover received values 0, 1, 2, 7, and hostile 255.
 
-The cap is a local conservative relay policy, not a claim that 7 is a wire-format maximum.
+The cap is a local conservative relay policy, not a claim that 7 is a wire-format maximum. Dual-upstream canonical evidence proves only the selected concrete `7 -> 6` mutation; it does not establish `255 -> 6` as compatibility truth.
 
 Relay selection excludes the ingress link, closed links, links that are not write-ready, and links whose capabilities reject the encoded payload.
 
@@ -302,7 +303,7 @@ Before retaining bytes, the reducer validates:
 
 An identical duplicate fragment is ignored. Reusing an index with different bytes, or changing fixed metadata for an existing stream, rejects and removes the conflicting stream so mixed content cannot be assembled.
 
-When all indexes are present, assembly occurs in ascending index order, the stream is removed in the same transition, and the engine emits an explicit `DecodePacket` effect with `PacketSource.Reassembled`. The decoded inner packet returns as a normal `PacketDecoded` event and re-enters the complete admission pipeline, including packet identity, required authentication, profile checks, authoritative deduplication, dispatch, and relay.
+When all indexes are present, assembly occurs in ascending index order, the stream is removed in the same transition, and the engine emits an explicit `ReinjectPacket` boundary handoff with `PacketSource.Reassembled`. The runtime protocol adapter decodes those bytes. A successful decoded inner packet returns as a normal `PacketDecoded` event and re-enters the complete admission pipeline, including packet identity, required authentication, profile checks, authoritative deduplication, dispatch, and relay. `ReinjectPacket` does not execute or select a codec; it transfers completed bytes to the same ingress boundary used by transport payloads.
 
 Reassembly never calls the reducer recursively and never bypasses authentication. Completed outer fragment state is not treated as admitted inner-packet identity.
 
@@ -367,9 +368,9 @@ Behavior is developed test-first. The suite is split by authority rather than by
 
 ### Protocol evidence tests
 
-- pinned packet-ID known-answer literals for both current clients;
-- signing-transcript literals, including TTL-preserving relay encoding;
-- positive fragment metadata and complete reassembly literals;
+- pinned packet-ID known-answer literals for both current clients, stored only in `BitchatBaseline2026_08` and their upstream reproduction harnesses;
+- canonical signing-transcript fixtures, including TTL-preserving relay encoding;
+- canonical positive fragment metadata and complete reassembly fixtures;
 - negative length, count, index, and overflow cases;
 - proof that existing Phase 1 fixtures and hashes are unchanged.
 
@@ -395,6 +396,7 @@ Behavior is developed test-first. The suite is split by authority rather than by
 - stop publishes the current transition, rejects new work, and cancels outstanding work;
 - cancellation is not swallowed;
 - restart increments generation, retains only valid deduplication, and ignores old results;
+- `stop/start` is an in-process suspension/restart rather than a new security epoch, so unexpired admitted dedup survives while transient state is cleared;
 - close is idempotent and permanent.
 
 ### Hostile and generated tests
@@ -427,7 +429,7 @@ Phase 4 is complete when:
 - fragment completion re-enters full admission without recursion;
 - relay TTL cannot underflow and nondeterminism is effect-driven;
 - stop, restart, cancellation, backpressure, and stale-result behavior are tested;
-- existing compatibility data is byte-for-byte unchanged;
+- the 46 pre-Phase-4 fixtures and their hashes remain byte-for-byte unchanged, while newly proven Phase 4 evidence is appended through the same canonical corpus and production gate;
 - all verification gates pass on the available Android host and iOS simulator targets;
 - no Phase 5+ production scaffolding is introduced.
 
@@ -435,7 +437,9 @@ If the required pinned evidence cannot be established, the corresponding path re
 
 ## Implementation record
 
-Tasks 4.1–4.5 were implemented on `codex/phase-4-deterministic-mesh-engine` from accepted Phase 3 base `6989e092c2eb8e90d267b77659960b4d8eb4fc86`. The two new modules match the approved dependency graph. Protocol refinements are limited to packet identity, signing transcript, TTL-only uncompressed relay encoding, fragment values/codec, and named profile classifications. `compatibility/` was not changed.
+Tasks 4.1–4.5 were implemented on `codex/phase-4-deterministic-mesh-engine` from accepted Phase 3 base `6989e092c2eb8e90d267b77659960b4d8eb4fc86`. The two new modules match the approved dependency graph. Protocol refinements are limited to packet identity, signing transcript, TTL-only uncompressed relay encoding, fragment values/codec, and named profile classifications. The acceptance remediation appended six pinned, cross-validated fixtures to `BitchatBaseline2026_08`; no pre-existing fixture or hash was changed.
+
+The same remediation moved structural decoding out of the reducer. Link payload bytes now pass through `MeshRuntime` and `MeshProtocolAdapter`, which invokes `BitchatCodec`, constructs protocol-owned signing evidence, and emits `MeshEvent.PacketDecoded` only on success. Structural failures remain outside `MeshState`. `DecodePacket` is no longer a `MeshEffect`; `ReinjectPacket` lets completed fragments traverse the same adapter boundary. `ComputePacketDigest` remains correlated because Phase 4 intentionally does not choose a production cryptographic provider.
 
 The reducer/property suite executes the admission, invalid-auth poisoning, duplicate, TTL, stale-result, relay, fragment, quota, and deterministic replay laws. `MeshPropertyTest` records and replays 100 seeds of 250 hostile events, while `MeshEngineCoverageTest` supplies the non-zero production gate. `MeshRuntimeTest` covers constructor inertness, double start, typed mailbox pressure, serialized transitions, ordered effects, timer cancellation, bounded trace loss, stop/restart retention, stale generations, permanent close, and cancellation propagation.
 

@@ -45,30 +45,26 @@ class FragmentReducerTest {
         assertTrue(completed.state.fragmentStreams.isEmpty())
         assertEquals(0, completed.state.aggregateFragmentBytes)
         assertTrue(completed.state.pendingAdmissions.isEmpty())
-        val decode = completed.effects.filterIsInstance<MeshEffect.DecodePacket>().single()
-        assertEquals(originalPacketBytes, decode.bytes)
+        val reinject = completed.effects.filterIsInstance<MeshEffect.ReinjectPacket>().single()
+        assertEquals(originalPacketBytes, reinject.bytes)
         assertEquals(
             PacketSource.Reassembled(MeshFixtures.linkA, fragmentZero.id),
-            decode.source,
+            reinject.source,
         )
         assertTrue(completed.effects.any { it is MeshEffect.Cancel })
 
         val decodedInner = engine.reduce(
             completed.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decode.correlationId,
-                generation = decode.generation,
-                observedAt = MeshFixtures.now,
-                source = decode.source,
-                result = DecodeResult.Success(
-                    assertIs<DecodeResult.Success<DecodedPacket>>(
-                        BitchatCodec.decode(decode.bytes),
-                    ).value,
-                ),
+            MeshFixtures.packetDecoded(
+                packet = assertIs<DecodeResult.Success<DecodedPacket>>(
+                    BitchatCodec.decode(reinject.bytes),
+                ).value,
+                source = reinject.source,
+                eventGeneration = reinject.generation,
             ),
         )
-        assertTrue(decodedInner.state.pendingAdmissions.containsKey(decode.correlationId))
-        assertEquals(1, decodedInner.effects.count { it is MeshEffect.ComputePacketDigest })
+        val digest = decodedInner.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
+        assertTrue(decodedInner.state.pendingAdmissions.containsKey(digest.correlationId))
 
         val replayedTail = engine.reduce(
             completed.state,
@@ -360,24 +356,9 @@ class FragmentReducerTest {
         digestSeed: Int,
         observedAt: MonotonicTime = MeshFixtures.now,
     ): FragmentRequest {
-        val received = engine.reduce(
-            state,
-            MeshEvent.LinkObserved(
-                generation = MeshFixtures.generation,
-                observedAt = observedAt,
-                event = LinkEvent.PayloadReceived(MeshFixtures.linkA, packet.rawPacket.wireBytes),
-            ),
-        )
-        val decode = received.effects.filterIsInstance<MeshEffect.DecodePacket>().single()
         val decoded = engine.reduce(
-            received.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decode.correlationId,
-                generation = decode.generation,
-                observedAt = observedAt,
-                source = decode.source,
-                result = DecodeResult.Success(packet),
-            ),
+            state,
+            MeshFixtures.packetDecoded(packet = packet, observedAt = observedAt),
         )
         val digest = decoded.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
         val admitted = engine.reduce(
@@ -432,28 +413,15 @@ class FragmentReducerTest {
         ).state
 
     private companion object {
-        val fragmentZeroPacket: DecodedPacket = decode(
-            "0220030102030405060708000000001a0011223344556677" +
-                "0001020304050607000000020202020301020304050607080000",
-        )
-        val fragmentOnePacket: DecodedPacket = decode(
-            "0220030102030405060708000000001a0011223344556677" +
-                "0001020304050607000100020200000200112233445566774142",
-        )
-        val fragmentZero: FragmentPayload = decodeFragment(fragmentZeroPacket.payload)
-        val fragmentOne: FragmentPayload = decodeFragment(fragmentOnePacket.payload)
-        val originalPacketBytes: Bytes = bytes(
-            "0202030102030405060708000000000200112233445566774142",
-        )
+        val fragmentZeroPacket: DecodedPacket = MeshFixtures.fragmentZeroPacket
+        val fragmentOnePacket: DecodedPacket = MeshFixtures.fragmentOnePacket
+        val fragmentZero: FragmentPayload = MeshFixtures.fragmentZero
+        val fragmentOne: FragmentPayload = MeshFixtures.fragmentOne
+        val originalPacketBytes: Bytes = MeshFixtures.broadcastPacket.rawPacket.wireBytes
 
         fun digest(seed: Int): Bytes = Bytes.copyOf(ByteArray(32) { seed.toByte() })
 
         fun bytes(hex: String): Bytes = MeshFixtures.bytes(hex)
 
-        fun decode(hex: String): DecodedPacket =
-            assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(bytes(hex))).value
-
-        fun decodeFragment(payload: Bytes): FragmentPayload =
-            assertIs<DecodeResult.Success<FragmentPayload>>(FragmentPayloadCodec.decode(payload)).value
     }
 }

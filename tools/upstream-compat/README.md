@@ -21,9 +21,9 @@ tools/upstream-compat/verify-upstreams.sh /tmp/bitmessage-upstreams
 2. Android upstream emits the same five semantic outer-packet cases and two announcement cases.
 3. Apple decoders accept Android-emitted outer and announcement literals.
 4. Android decoders accept Apple-emitted outer and announcement literals.
-5. Both pinned clients execute the proposed Phase 4 packet-ID, fixed-TTL signing, signature-preserving relay, and 13-byte fragment-metadata assertions through their production helpers.
+5. Both pinned clients execute the canonical Phase 4 packet-ID, fixed-TTL signing, signature-preserving relay, and 13-byte fragment-metadata assertions through their production helpers.
 
-The first Phase 4 run exposed that both production signing helpers emit a 256-byte padded transcript, consisting of the 26-byte unpadded core followed by 230 `e6` bytes. The profile decision was subsequently amended to adopt those reproduced bytes. The harness asserts the exact core, total length, and padding rather than treating the 26-byte core alone as a signing transcript. Packet identity and fragment literals also match.
+The first Phase 4 run exposed that both production signing helpers emit a 256-byte padded transcript rather than the 26-byte unpadded core alone. The profile decision was subsequently amended to adopt those reproduced bytes. The harness asserts the exact core, total length, and padding. Packet identity and fragment literals also match. The paired Apple/Android outputs are recorded as six append-only fixtures in `BitchatBaseline2026_08`; `productionCompatibilityCheck` consumes those fixtures rather than a shadow protocol-test corpus.
 
 The extended announcement bytes intentionally differ in TLV order. The harness and neutral corpus preserve both raw encodings.
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin Multiplatform 2.4.10, Kotlin coroutines 1.11.0, existing foundation `Engine`/time/scheduling/trace values, existing `Bytes` ownership model, `kotlin.test`, `kotlinx-coroutines-test`, pinned Apple and Android upstream harnesses.
 
-**Execution status:** Tasks 1–11 are implemented and committed; tasks 4.1–4.5 have executed Android-host and iOS Simulator tests. Task 12 documentation is complete, and Task 13 final cross-phase verification remains. Phase 5 has not started.
+**Execution status:** Tasks 1–12 and the narrow Phase 4 acceptance remediation are implemented. Final cross-phase verification and the acceptance commit remain. Phase 5 has not started.
 
 ---
 
@@ -16,7 +16,7 @@
 
 Implement only roadmap tasks 4.1–4.5. The accepted base is `6989e092c2eb8e90d267b77659960b4d8eb4fc86`; the design checkpoint is `91f3c4d025c5ada299431fd2d335286002dd2c9f` on `codex/phase-4-deterministic-mesh-engine`.
 
-The Phase 1 `compatibility/` tree is immutable. New Phase 4 literals live in protocol tests and the pinned reproduction harness, not in `compatibility/BitchatBaseline2026_08/fixtures.json`.
+Existing Phase 1 fixtures and hashes are immutable, but the canonical corpus is evidence-extensible. Phase 4 known answers live in six appended `BitchatBaseline2026_08` fixtures and the pinned reproduction harnesses; protocol and mesh tests must not maintain a second normative literal corpus.
 
 The recorded pre-implementation baseline is: Phase 1 `compatibilityCheck` 32 Android-host tests including 6 corpus tests; Phase 2 foundation 28, model 6, and testing 58 target executions (92 total); Phase 3 protocol 72 target executions plus one dedicated production-coverage gate test. Android debug assembly and the iOS simulator `SharedLogic` framework link both passed before Phase 4 production work.
 
@@ -24,7 +24,9 @@ The recorded pre-implementation baseline is: Phase 1 `compatibilityCheck` 32 And
 
 Task 1 completed in commit `704c2484ff0473f317e131013321e98d40c22c07`. Task 2's disposable harness ran against the exact pinned Apple and Android SHAs before any protocol or engine production implementation. Packet identity, full SHA-256, 16-byte truncation, 13-byte fragment metadata, fragment literals, and out-of-order reassembly matched the planned answers.
 
-The initial signing assertion did not match. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The 26-byte value is therefore the unpadded semantic packet, not the bytes signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Execution stopped without production changes. The user then approved adopting the reproduced 256-byte transcript. The corrected harness passed against both pinned clients, while `compatibility/` remained untouched.
+The initial signing assertion did not match. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript rather than the initially asserted 26-byte unsigned core. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Execution stopped without production changes. The user then approved adopting the reproduced 256-byte transcript. The corrected harness passed against both pinned clients. Acceptance remediation canonicalized it as `apple-phase4-signing-relay` and `android-phase4-signing-relay`, including the exact transcript and canonical hash.
+
+Acceptance remediation also moved structural decoding outside the reducer: `LinkEvent.PayloadReceived -> MeshRuntime/MeshProtocolAdapter -> BitchatCodec -> MeshEvent.PacketDecoded -> MeshEngine`. `DecodePacket` is not a `MeshEffect`; completed fragments emit `ReinjectPacket`, which the runtime routes through the same adapter.
 
 The implementation must preserve these stage boundaries:
 
@@ -56,7 +58,8 @@ No packet enters `admittedPackets` before required authentication succeeds. No f
 - `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/FragmentPayloadCodec.kt`: typed 13-byte fragment metadata decode/encode.
 - `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/WireModel.kt`: add only the resolved fragment packet assignment and fragment values.
 - `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/BitchatProfile.kt`: explicit admission/relay classifications; no implicit absent-signature rule.
-- `protocol/bitchat/src/commonTest/kotlin/com/yet/bitmessage/protocol/bitchat/Phase4ProtocolEvidenceTest.kt`: literal packet-ID, transcript, relay, and fragment vectors.
+- `compatibility/BitchatBaseline2026_08/fixtures.json`: sole canonical Phase 4 packet-ID, transcript, relay, and fragment known answers.
+- `protocol/bitchat/src/androidHostTest/kotlin/com/yet/bitmessage/protocol/bitchat/ProductionFixtureCoverage.kt`: production execution of those canonical fixtures.
 
 ### Transport contracts
 
@@ -183,22 +186,11 @@ rtk git commit -m "build: add Phase 4 mesh modules"
 - Create: `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/FragmentPayloadCodec.kt`
 - Modify: `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/WireModel.kt`
 - Modify: `protocol/bitchat/src/commonMain/kotlin/com/yet/bitmessage/protocol/bitchat/BitchatProfile.kt`
-- Create: `protocol/bitchat/src/commonTest/kotlin/com/yet/bitmessage/protocol/bitchat/Phase4ProtocolEvidenceTest.kt`
+- Modify: `compatibility/BitchatBaseline2026_08/fixtures.json`
+- Modify: `protocol/bitchat/src/androidHostTest/kotlin/com/yet/bitmessage/protocol/bitchat/ProductionFixtureCoverage.kt`
 - Modify: `protocol/bitchat/src/commonTest/kotlin/com/yet/bitmessage/protocol/bitchat/RawRetentionTest.kt`
 
-- [ ] Extend the disposable pinned harness, keeping the SHAs unchanged. Both clients must emit or accept these exact known answers from their production packet-ID, signing, binary, and fragment code paths:
-
-```text
-packet identity input: 02001122334455667701020304050607084142
-SHA-256:              25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda
-wire packet ID:       25429fbd15e2051049307f8e650ae863
-unsigned signing core: 0202000102030405060708000000000200112233445566774142
-signing transcript:    unsigned core followed by e6 repeated 230 times (256 bytes total)
-fragment metadata:    00010203040506070001000202aabb
-fragment zero:        0001020304050607000000020202020301020304050607080000
-fragment one:         0001020304050607000100020200000200112233445566774142
-reassembled packet:   0202030102030405060708000000000200112233445566774142
-```
+- [ ] Extend the disposable pinned harness, keeping the SHAs unchanged. Both clients must emit or accept the known answers now canonically recorded by fixture pairs `apple/android-phase4-packet-identity`, `apple/android-phase4-signing-relay`, and `apple/android-phase4-fragment-reassembly`.
 
 The semantic packet for identity is type `0x02`, sender `0011223344556677`, timestamp `0x0102030405060708`, and payload `4142`. The signing case is v2, received TTL 7, signature flag set, and 64 bytes of `5a`; its transcript fixes TTL to 0 and removes the signature flag/bytes. The relay case changes received TTL 7 to 6 while retaining the signature and producing the same transcript. The complete fragment case splits the 26-byte v2 broadcast packet into two 13-byte data portions and proves out-of-order assembly produces the exact original packet.
 
@@ -210,33 +202,9 @@ rtk tools/upstream-compat/install-harness.sh /tmp/bitmessage-phase4-upstreams
 rtk tools/upstream-compat/verify-upstreams.sh /tmp/bitmessage-phase4-upstreams
 ```
 
-Expected: the existing Phase 1 producer/reciprocal-acceptance paths remain green and both new Phase 4 tests print matching `BITMESSAGE_PHASE4` literals. If either client disagrees, stop the dependent production path and record the observed discrepancy instead of altering these constants.
+Expected: the existing Phase 1 producer/reciprocal-acceptance paths remain green and both new Phase 4 tests print matching `BITMESSAGE_PHASE4` literals. If either client disagrees, stop the dependent production path and record the observed discrepancy instead of altering canonical fixtures.
 
-- [ ] Write `Phase4ProtocolEvidenceTest` first. It asserts the exact identity input, digest truncation, signing transcript, TTL-only relay output, signature preservation, transcript equality before/after relay, both complete-reassembly fragment literals, fragment decode/encode, and rejection of short/zero-count/out-of-range fragments. Replace the former `RawRetentionTest.signingTranscriptIsExplicitlyBlockedWithoutLiteralTranscriptEvidence` assertion with the positive pinned transcript assertion while retaining compressed/padded blocks.
-
-```kotlin
-@Test
-fun packetIdentityMatchesBothPinnedClients() {
-    val packet = decode("0202030102030405060708000000000200112233445566774142")
-    assertEquals(
-        bytes("02001122334455667701020304050607084142"),
-        PacketIdentity.input(packet).canonicalBytes,
-    )
-    assertEquals(
-        PacketId.of(bytes("25429fbd15e2051049307f8e650ae863")),
-        PacketIdentity.fromSha256(bytes("25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda")),
-    )
-}
-
-@Test
-fun relayTtlMutationKeepsSigningTranscriptAndSignature() {
-    val packet = decode(signedTtlSeven)
-    val relayed = assertIs<EncodeResult.Success>(RelayEncoding.withTtl(packet, 6u)).bytes
-    val relayedPacket = decode(relayed)
-    assertEquals(SigningTranscript.build(packet), SigningTranscript.build(relayedPacket))
-    assertEquals(packet.signature, relayedPacket.signature)
-}
-```
+- [ ] Add the six pinned outcomes to `BitchatBaseline2026_08`, then execute them through `ProductionFixtureCoverage`. The production gate asserts exact identity input and digest truncation, the 256-byte signing transcript, TTL-only relay output, signature preservation, transcript equality before/after relay, both complete-reassembly fragment values, fragment decode/encode, and rejection of invalid fragment structure. Common protocol tests may retain behavior/property checks, but they do not inline the Phase 4 known answers.
 
 - [ ] Run `rtk ./gradlew :protocol:bitchat:allTests --console=plain`. Expect failures because packet identity, positive transcript, relay encoding, and fragment codec are absent.
 
@@ -605,7 +573,7 @@ data class MeshState(
 
 - [ ] Define `PacketSource` as `Link(linkId)` or `Reassembled(ingressLink, fragmentId)`. Define `MeshEvent` as a sealed interface. Every asynchronous result includes `generation`, `correlationId`, and `observedAt`. Link input is wrapped as `MeshEvent.LinkObserved(generation, observedAt, event)`. Result cases are `PacketDecoded`, `PacketDigestComputed`, `SignatureVerified`, `FragmentPayloadDecoded`, `RelayEncoded`, `EntropyProvided`, `TimerElapsed`, `LinkCompleted`, `EffectFailed`, `RuntimeStarted`, and `RuntimeStopping`. `MeshFailureCode` distinguishes decode, digest, verification, encoding, timer, write, and internal execution failures without retaining exception text.
 
-- [ ] Define `MeshEffect` as a sealed interface. Correlated cases are `DecodePacket`, `ComputePacketDigest`, `VerifySignature`, `DecodeFragmentPayload`, `EncodeRelay`, `RequestEntropy`, `Schedule`, `Cancel`, `WriteLink`, `CloseLink`, and `PublishPublicPayload`. Only `PublishPublicPayload` crosses the application boundary; do not add future Noise/sync/delivery/media receivers.
+- [ ] Define `MeshEffect` as a sealed interface. Correlated cases are `ReinjectPacket`, `ComputePacketDigest`, `VerifySignature`, `DecodeFragmentPayload`, `EncodeRelay`, `RequestEntropy`, `Schedule`, `Cancel`, `WriteLink`, `CloseLink`, and `PublishPublicPayload`. The runtime owns `ReinjectPacket`; only `PublishPublicPayload` crosses the application boundary. Do not add future Noise/sync/delivery/media receivers.
 
 ```kotlin
 sealed interface MeshEffect {
@@ -633,30 +601,16 @@ rtk git add engine/mesh/src/commonMain engine/mesh/src/commonTest
 rtk git commit -m "feat: define bounded mesh state contracts"
 ```
 
-## Task 5: Add the pure top-level reducer and link/decode transitions
+## Task 5: Add the pure top-level reducer and protocol-adapted ingress transitions
 
 **Files:**
 - Create: `engine/mesh/src/commonMain/kotlin/com/yet/bitmessage/engine/mesh/MeshEngine.kt`
 - Create: `engine/mesh/src/commonMain/kotlin/com/yet/bitmessage/engine/mesh/AdmissionReducer.kt`
+- Create: `engine/mesh/src/commonMain/kotlin/com/yet/bitmessage/engine/mesh/runtime/MeshProtocolAdapter.kt`
 - Create: `engine/mesh/src/commonTest/kotlin/com/yet/bitmessage/engine/mesh/LinkReducerTest.kt`
+- Create: `engine/mesh/src/commonTest/kotlin/com/yet/bitmessage/engine/mesh/runtime/MeshProtocolBoundaryTest.kt`
 
-- [ ] Write failing tests for open/readiness/close, active-link capacity, payload size rejection before pending allocation, decode effect emission, decode failure, unknown correlation, and stale generation.
-
-```kotlin
-@Test
-fun bytesReceivedEmitsDecodeWithoutParsingInsideTheEngine() {
-    val transition = engine.reduce(
-        stateWithReadyLink,
-        MeshEvent.LinkObserved(
-            generation = stateWithReadyLink.generation,
-            observedAt = now,
-            event = LinkEvent.PayloadReceived(linkA, bytes("0202030102030405060708000000000200112233445566774142")),
-        ),
-    )
-    assertIs<MeshEffect.DecodePacket>(transition.effects.single())
-    assertTrue(transition.state.pendingAdmissions.isEmpty())
-}
-```
+- [ ] Write failing tests for open/readiness/close, active-link capacity, payload size rejection before pending allocation, successful adapter decode, structural decode failure with exact `MeshState` equality, and stale generation.
 
 - [ ] Run `rtk ./gradlew :engine:mesh:allTests --console=plain`. Expect missing reducer symbols.
 
@@ -686,7 +640,7 @@ class MeshEngine(
 
 - [ ] Link open validates capacity before copying state. Link close removes its provisional bindings, link-scoped pending admissions, and relay eligibility, cancelling their timers in stable correlation order. It does not remove unexpired admitted packet IDs.
 
-- [ ] Payload input validates runtime generation, lifecycle, active link, and `maxPendingPacketBytes`, then emits `DecodePacket`. Decode success reserves pending admission only after checking global count, per-link count, and aggregate pending bytes; decode failure emits a typed rejected trace and retains no state.
+- [ ] `MeshRuntime.trySubmit(LinkEvent, observedAt)` checks raw payload size, calls `MeshProtocolAdapter`, and enqueues `PacketDecoded` only after `BitchatCodec.decode` and signed-transcript construction succeed. `MeshEvent.LinkObserved` rejects raw `PayloadReceived`, preventing structural failures from entering the reducer. `reduceDecoded` validates runtime generation, lifecycle, active link, global count, per-link count, and aggregate pending bytes before reserving pending admission and emitting `ComputePacketDigest`.
 
 - [ ] Run the engine tests twice with `--rerun-tasks` and assert transition equality for the same state/event input.
 
@@ -736,9 +690,9 @@ sealed interface AdmissionStage {
 }
 ```
 
-`reduceDecoded` stores `AwaitingDigest`, schedules a 15-second timeout, and emits `ComputePacketDigest(PacketIdentity.input(packet))`. `reduceDigest` converts the 32-byte result through `PacketIdentity.fromSha256`; it then asks the protocol profile for `VERIFY_SIGNATURE`, `ALLOW_UNSIGNED_MESSAGE`, `ALLOW_UNSIGNED_FRAGMENT`, or `REJECT`.
+`MeshProtocolAdapter` supplies protocol-owned signing evidence. `reduceDecoded` stores it with `AwaitingDigest`, schedules a 15-second timeout, and emits `ComputePacketDigest(PacketIdentity.input(packet))`. `reduceDigest` converts the 32-byte result through `PacketIdentity.fromSha256`; it then asks the protocol profile for `VERIFY_SIGNATURE`, `ALLOW_UNSIGNED_MESSAGE`, `ALLOW_UNSIGNED_FRAGMENT`, or `REJECT`.
 
-- [ ] For `VERIFY_SIGNATURE`, call `SigningTranscript.build`, replace the pending stage with `AwaitingSignature(packetId)`, and emit `VerifySignature`. Transcript failure rejects and removes pending state. Signature failure removes pending state, subtracts retained bytes, cancels its timeout, records `mesh.admission.signature_rejected`, and touches no admitted/binding/topology/relay/dispatch collection.
+- [ ] For `VERIFY_SIGNATURE`, require the signing transcript carried by the pending admission, replace the pending stage with `AwaitingSignature(packetId)`, and emit `VerifySignature`. Missing evidence rejects and removes pending state. Signature failure removes pending state, subtracts retained bytes, cancels its timeout, records `mesh.admission.signature_rejected`, and touches no admitted/binding/topology/relay/dispatch collection.
 
 - [ ] On signature success or named unsigned authorization, call one `admit` function. It removes expired admitted IDs using `event.observedAt`, checks the ID atomically, and returns one of `NEW`, `DUPLICATE`, or `DEDUP_CAPACITY_REACHED`. Only `NEW` inserts the ID with `observedAt + dedupLifetime`.
 
@@ -777,11 +731,11 @@ rtk git commit -m "feat: authenticate before mesh dedup"
 - Modify: `engine/mesh/src/commonTest/kotlin/com/yet/bitmessage/engine/mesh/AdmissionReducerTest.kt`
 - Create: `engine/mesh/src/commonTest/kotlin/com/yet/bitmessage/engine/mesh/RelayPolicyTest.kt`
 
-- [ ] Write failing tests for broadcast/local recipient dispatch, non-local recipient no-dispatch, fragment no-public-dispatch, dedup expiry, a full unexpired dedup cache, and received TTL values 0, 1, 2, 7, and 255.
+- [ ] Write failing tests for broadcast/local recipient dispatch, non-local recipient no-dispatch, fragment no-public-dispatch, dedup expiry, a full unexpired dedup cache, and received TTL values 0, 1, 2, 7, and 255. The 255 case validates a named BitMessage-local hostile-input cap; canonical dual-upstream evidence proves only the concrete `7 -> 6` mutation.
 
 ```kotlin
 @Test
-fun ttlBoundariesSeparateLocalDispatchFromRelay() {
+fun localRelayTtlPolicyCapsUntrustedLargeValues() {
     assertEquals(null, RelayPolicy.outgoingTtl(0u))
     assertEquals(null, RelayPolicy.outgoingTtl(1u))
     assertEquals(1u, RelayPolicy.outgoingTtl(2u))
@@ -796,7 +750,7 @@ fun ttlBoundariesSeparateLocalDispatchFromRelay() {
 
 ```kotlin
 internal fun outgoingTtl(received: UByte): UByte? {
-    val capped = minOf(received.toInt(), 7)
+    val capped = minOf(received.toInt(), LOCAL_MAX_RECEIVED_TTL)
     return if (capped < 2) null else (capped - 1).toUByte()
 }
 ```
@@ -877,14 +831,14 @@ rtk git commit -m "feat: add deterministic mesh relay policy"
 
 ```kotlin
 @Test
-fun completionRemovesStreamAndEmitsDecodeInsteadOfRecursiveReduction() {
+fun completionRemovesStreamAndEmitsReinjectionInsteadOfRecursiveReduction() {
     val afterSecond = reduceFragment(firstState, fragment(index = 1u, data = innerTail))
     val completed = reduceFragment(afterSecond.state, fragment(index = 0u, data = innerHead))
 
     assertTrue(completed.state.fragmentStreams.isEmpty())
-    val decode = assertIs<MeshEffect.DecodePacket>(completed.effects.single())
-    assertEquals(Bytes.copyOf(innerHead.copyToByteArray() + innerTail.copyToByteArray()), decode.bytes)
-    assertEquals(PacketSource.Reassembled(linkA, fragmentId), decode.source)
+    val reinject = assertIs<MeshEffect.ReinjectPacket>(completed.effects.single())
+    assertEquals(Bytes.copyOf(innerHead.copyToByteArray() + innerTail.copyToByteArray()), reinject.bytes)
+    assertEquals(PacketSource.Reassembled(linkA, fragmentId), reinject.source)
 }
 ```
 
@@ -894,7 +848,7 @@ fun completionRemovesStreamAndEmitsDecodeInsteadOfRecursiveReduction() {
 
 - [ ] An identical `(index, bytes)` repeat is ignored without extending expiry. Reusing an index with different bytes, or changing total/original type, removes the stream, subtracts all retained bytes, cancels its timer, and records a conflict rejection.
 
-- [ ] On completion, join indexes `0 until total` in ascending order after a checked total-size sum, remove the stream in the same transition, cancel its timer, and emit `DecodePacket` with `PacketSource.Reassembled`. The eventual `PacketDecoded` result enters the ordinary pending/digest/auth/dedup pipeline.
+- [ ] On completion, join indexes `0 until total` in ascending order after a checked total-size sum, remove the stream in the same transition, cancel its timer, and emit `ReinjectPacket` with `PacketSource.Reassembled`. The runtime protocol adapter emits `PacketDecoded` only after structural success, then the result enters the ordinary pending/digest/auth/dedup pipeline.
 
 - [ ] A fragment timer event must match stream key, timer ID, and generation. Expiry removes only that stream. A late timer or decode result cannot affect a replacement stream.
 
@@ -1078,10 +1032,10 @@ rtk ./gradlew :androidApp:assembleDebug :sharedLogic:linkDebugFrameworkIosSimula
 
 - [ ] Inspect fresh JUnit XML under each module's `build/test-results` and report exact Android-host/iOS counts without counting `meshEngineCheck` or `productionCompatibilityCheck` as additional behavioral executions. List every selected `NO-SOURCE` task.
 
-- [ ] Prove the evidence corpus is unchanged and the module graph is narrow.
+- [ ] Prove the 46 pre-Phase-4 fixtures are unchanged, inspect the six append-only canonical additions, and confirm the module graph is narrow.
 
 ```bash
-rtk git diff --exit-code 6989e09 -- compatibility
+rtk git diff --unified=0 6989e09 -- compatibility/BitchatBaseline2026_08/fixtures.json
 rtk ./gradlew projects --console=plain
 rtk git diff --check
 rtk git status --short --branch

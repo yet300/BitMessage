@@ -11,11 +11,11 @@ import kotlin.test.assertTrue
 class FixtureCoverageAuditTest {
 
     @Test
-    fun phaseOneCorpusHasOneEvidenceFirstStatusForEveryFixture() {
+    fun canonicalCorpusHasOneEvidenceFirstStatusForEveryFixture() {
         val fixtures = FixtureManifestParser.parse(resource("BitchatBaseline2026_08/fixtures.json")).fixtures
 
-        assertEquals(46, fixtures.size)
-        assertEquals(46, fixtures.associate { it.id to classify(it) }.size)
+        assertEquals(52, fixtures.size)
+        assertEquals(52, fixtures.associate { it.id to classify(it) }.size)
         assertEquals(CoverageStatus.IMPLEMENT_NOW, classify(fixtures.single { it.id == "apple-v2-route" }))
         assertEquals(CoverageStatus.BLOCKED, classify(fixtures.single { it.id == "drift-neighbor-encoding-ambiguity" }))
     }
@@ -63,6 +63,9 @@ class FixtureCoverageAuditTest {
             "malformed-empty-input", "malformed-truncated-header", "malformed-unsupported-version", "malformed-truncated-sender",
             "malformed-truncated-recipient", "malformed-invalid-route-length", "malformed-payload-length-mismatch",
             "malformed-oversized-advertised-payload", "malformed-duplicate-tlv",
+            "apple-phase4-packet-identity", "android-phase4-packet-identity",
+            "apple-phase4-signing-relay", "android-phase4-signing-relay",
+            "apple-phase4-fragment-reassembly", "android-phase4-fragment-reassembly",
         )
 
         val EVIDENCE_LAYOUT_CONFLICTS = setOf(

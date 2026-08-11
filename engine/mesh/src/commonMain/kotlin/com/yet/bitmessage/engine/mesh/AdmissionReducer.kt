@@ -4,13 +4,11 @@ import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.TraceDecision
 import com.yet.bitmessage.foundation.Transition
 import com.yet.bitmessage.foundation.TimerId
-import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.BitchatBaseline2026_08
 import com.yet.bitmessage.protocol.bitchat.PacketAdmissionPolicy
 import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.protocol.bitchat.PacketIdentity
 import com.yet.bitmessage.protocol.bitchat.KnownPacketType
-import com.yet.bitmessage.protocol.bitchat.SigningTranscript
 import com.yet.bitmessage.protocol.bitchat.admissionPolicy
 import com.yet.bitmessage.transport.api.LinkEvent
 
@@ -27,7 +25,7 @@ internal fun reduceLink(
     return when (val linkEvent = event.event) {
         is LinkEvent.Opened -> reduceLinkOpened(prepared, linkEvent, event, limits)
         is LinkEvent.ReadinessChanged -> reduceReadiness(prepared, linkEvent, event)
-        is LinkEvent.PayloadReceived -> reducePayload(prepared, linkEvent, event, limits)
+        is LinkEvent.PayloadReceived -> error("PayloadReceived must be decoded by MeshProtocolAdapter.")
         is LinkEvent.Closed -> reduceLinkClosed(prepared, linkEvent, event)
     }
 }
@@ -38,35 +36,14 @@ internal fun reduceDecoded(
     limits: MeshLimits,
 ): Transition<MeshState, MeshEffect> {
     if (event.generation != state.generation || state.lifecycle != MeshLifecycle.RUNNING) {
-        return ignoredDecode(state, event.correlationId, stale = event.generation != state.generation)
-    }
-    if (!state.wasIssued(event.correlationId, MeshOperation.DECODE_PACKET)) {
-        return ignoredDecode(state, event.correlationId, stale = false)
-    }
-    if (state.pendingAdmissions.containsKey(event.correlationId)) {
-        return ignoredDecode(state, event.correlationId, stale = false)
+        return ignoredPacketIngress(state, stale = event.generation != state.generation)
     }
 
+    if (!state.links.containsKey(event.source.ingressLink)) {
+        return ignoredPacketIngress(state, stale = false)
+    }
     val prepared = state.prepareForCapacity(event.observedAt)
-    val packet = when (val result = event.result) {
-        is DecodeResult.Success -> result.value
-        is DecodeResult.Failure -> {
-            return Transition(
-                state = prepared,
-                trace = listOf(
-                    MeshTrace.record(
-                        MeshTraceTransition.DECODE_RESULT,
-                        TraceDecision.REJECTED,
-                        event.correlationId,
-                    ),
-                ),
-            )
-        }
-    }
-
-    if (!prepared.links.containsKey(event.source.ingressLink)) {
-        return ignoredDecode(prepared, event.correlationId, stale = false)
-    }
+    val packet = event.packet
     val retainedBytes = packet.rawPacket.wireBytes.size
     if (retainedBytes > limits.maxPendingPacketBytes ||
         prepared.pendingAdmissions.size >= limits.maxPendingAdmissions ||
@@ -74,36 +51,38 @@ internal fun reduceDecoded(
         limits.maxPendingAdmissionsPerLink ||
         prepared.aggregatePendingBytes.toLong() + retainedBytes > limits.maxAggregatePendingBytes.toLong()
     ) {
-        return limitReached(prepared, event.correlationId, retainedBytes)
+        return limitReached(prepared, correlationId = null, inputBytes = retainedBytes)
     }
 
-    val timeoutTimerId = TimerId.of("${event.correlationId.value}:pending")
+    val issued = prepared.issueCorrelation(MeshOperation.COMPUTE_DIGEST)
+    val timeoutTimerId = TimerId.of("${issued.correlationId.value}:pending")
     val pending = PendingAdmission(
         source = event.source,
         packet = packet,
+        signingTranscript = event.signingTranscript,
         stage = AdmissionStage.AwaitingDigest,
         retainedBytes = retainedBytes,
         expiresAt = event.observedAt.plus(limits.pendingAdmissionLifetime),
         timeoutTimerId = timeoutTimerId,
     )
-    val pendingAdmissions = prepared.pendingAdmissions.toMutableMap().apply {
-        put(event.correlationId, pending)
+    val pendingAdmissions = issued.state.pendingAdmissions.toMutableMap().apply {
+        put(issued.correlationId, pending)
     }
-    val updated = prepared.copy(
+    val updated = issued.state.copy(
         pendingAdmissions = SnapshotMap(pendingAdmissions),
-        aggregatePendingBytes = prepared.aggregatePendingBytes + retainedBytes,
+        aggregatePendingBytes = issued.state.aggregatePendingBytes + retainedBytes,
     )
     return Transition(
         state = updated,
         effects = listOf(
             MeshEffect.Schedule(
-                correlationId = event.correlationId,
+                correlationId = issued.correlationId,
                 generation = event.generation,
                 timerId = timeoutTimerId,
                 delay = limits.pendingAdmissionLifetime,
             ),
             MeshEffect.ComputePacketDigest(
-                correlationId = event.correlationId,
+                correlationId = issued.correlationId,
                 generation = event.generation,
                 input = PacketIdentity.input(packet),
             ),
@@ -112,7 +91,7 @@ internal fun reduceDecoded(
             MeshTrace.record(
                 MeshTraceTransition.DECODE_RESULT,
                 TraceDecision.APPLIED,
-                event.correlationId,
+                issued.correlationId,
                 inputBytes = retainedBytes,
                 itemCount = updated.pendingAdmissions.size,
             ),
@@ -151,10 +130,8 @@ internal fun reduceDigest(
         PacketAdmissionPolicy.VERIFY_SIGNATURE -> {
             val signature = pending.packet.signature
                 ?: return rejectPending(prepared, event.correlationId)
-            val transcript = when (val result = SigningTranscript.build(pending.packet)) {
-                is DecodeResult.Success -> result.value
-                is DecodeResult.Failure -> return rejectPending(prepared, event.correlationId)
-            }
+            val transcript = pending.signingTranscript
+                ?: return rejectPending(prepared, event.correlationId)
             val admissions = prepared.pendingAdmissions.toMutableMap().apply {
                 put(
                     event.correlationId,
@@ -761,39 +738,6 @@ private fun reduceReadiness(
     )
 }
 
-private fun reducePayload(
-    state: MeshState,
-    linkEvent: LinkEvent.PayloadReceived,
-    event: MeshEvent.LinkObserved,
-    limits: MeshLimits,
-): Transition<MeshState, MeshEffect> {
-    if (!state.links.containsKey(linkEvent.linkId)) return ignoredLink(state, stale = false)
-    if (linkEvent.bytes.size > limits.maxPendingPacketBytes) {
-        return limitReached(state, correlationId = null, inputBytes = linkEvent.bytes.size)
-    }
-
-    val issued = state.issueCorrelation(MeshOperation.DECODE_PACKET)
-    return Transition(
-        state = issued.state,
-        effects = listOf(
-            MeshEffect.DecodePacket(
-                correlationId = issued.correlationId,
-                generation = event.generation,
-                source = PacketSource.Link(linkEvent.linkId),
-                bytes = linkEvent.bytes,
-            ),
-        ),
-        trace = listOf(
-            MeshTrace.record(
-                MeshTraceTransition.PAYLOAD_RECEIVED,
-                TraceDecision.APPLIED,
-                issued.correlationId,
-                inputBytes = linkEvent.bytes.size,
-            ),
-        ),
-    )
-}
-
 private fun reduceLinkClosed(
     state: MeshState,
     linkEvent: LinkEvent.Closed,
@@ -862,9 +806,8 @@ private fun ignoredLink(
         ),
     )
 
-private fun ignoredDecode(
+private fun ignoredPacketIngress(
     state: MeshState,
-    correlationId: CorrelationId,
     stale: Boolean,
 ): Transition<MeshState, MeshEffect> =
     Transition(
@@ -873,7 +816,6 @@ private fun ignoredDecode(
             MeshTrace.record(
                 if (stale) MeshTraceTransition.STALE_RESULT else MeshTraceTransition.DECODE_RESULT,
                 TraceDecision.IGNORED,
-                correlationId,
             ),
         ),
     )

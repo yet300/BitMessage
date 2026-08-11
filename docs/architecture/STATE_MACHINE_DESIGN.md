@@ -45,23 +45,20 @@ The runtime owns actors, scopes and ordering. An engine actor may own a mailbox 
 ## 3. Implemented mesh runtime event loop
 
 ```text
-external LinkEvent / correlated effect result
-                     |
-                     v
-       bounded event mailbox (256 default)
-                     |
-                     v
-       one actor -> MeshEngine.reduce
-                     | publish MeshState and trace first
-                     v
-       bounded ordered effect queue (256 default)
-                     |
-                     v
-           one MeshEffectExecutor worker
-                     |
-                     +---- correlated MeshEvent ----> actor result channel
+LinkEvent.PayloadReceived(bytes)
+        -> MeshRuntime / MeshProtocolAdapter
+        -> BitChatCodec.decode + protocol signing evidence
+        -> MeshEvent.PacketDecoded
+        -> bounded event mailbox (256 default)
+        -> one actor -> MeshEngine.reduce
+        -> publish MeshState and trace first
+        -> bounded ordered effect queue (256 default)
+        -> one MeshEffectExecutor worker
+        -> correlated MeshEvent -> actor result channel
 
-Schedule/Cancel effects -> runtime-owned timer jobs -> TimerElapsed -> actor
+Non-payload LinkEvent -> MeshEvent.LinkObserved -> event mailbox
+ReinjectPacket -> MeshProtocolAdapter -> PacketDecoded -> actor result channel
+Schedule/Cancel -> runtime-owned timer jobs -> TimerElapsed -> actor result channel
 ```
 
 Rules:
@@ -69,8 +66,8 @@ Rules:
 1. Each engine mailbox is bounded. Overflow has a typed policy; it never silently drops protocol input.
 2. One transition is reduced atomically. State and trace are published before its effects are enqueued; the single worker preserves effect order, and its rendezvous result channel has selection priority over new external input.
 3. Phase 4 is in-memory and makes no process-death or persistence claim. Correlation IDs and generations make late/duplicate results deterministic; durable at-least-once execution belongs to later delivery/persistence phases.
-4. Adapter callbacks are normalized and enqueued; fragment completion emits an explicit decode effect and never re-enters the reducer recursively.
-5. Start creates the channels/jobs; stop disables acceptance before one `RuntimeStopping` transition and non-cancellable teardown; a later start increments generation; close is permanent.
+4. Adapter callbacks are normalized before reduction. Structural decode or signing-transcript construction failure returns a typed ingress rejection, increments a runtime diagnostic counter, and never enters `MeshState`, reserves a correlation, or creates pending admission. Fragment completion emits `ReinjectPacket`; the runtime routes those bytes through the same protocol adapter without recursive reducer entry.
+5. Start creates the channels/jobs; stop disables acceptance before one `RuntimeStopping` transition and non-cancellable teardown; a later start increments generation; close is permanent. Phase 4 `stop/start` means in-process runtime suspension/restart, not a new security epoch. Unexpired in-memory admitted packet IDs remain authoritative across that suspension so a rapid restart cannot reopen the dedup window; transient pending work and links are cleared, expired IDs are pruned, and no process-death durability is claimed.
 6. The trace channel is bounded and non-blocking. Overflow increments an observable saturating dropped-trace count rather than changing state or blocking progress.
 7. Trace records contain transition names, correlations, decisions, and sizes, never plaintext, packet bodies, signing material, signatures, or keys.
 
@@ -98,7 +95,7 @@ No future production security decision uses Kotlin `Random`. A future simulator 
 
 ## 5. Implemented mesh effects and future persistence
 
-Phase 4 `MeshEffect` categories are `DecodePacket`, `ComputePacketDigest`, `VerifySignature`, `DecodeFragmentPayload`, `EncodeRelay`, `RequestEntropy`, `Schedule`, `Cancel`, `WriteLink`, `CloseLink`, and `PublishPublicPayload`. `MeshEffectExecutor` executes non-timer effects and returns at most one correlated `MeshEvent`; cancellation is rethrown and ordinary executor exceptions become redacted `EffectFailed(EFFECT_EXECUTION_FAILED)` events. `MeshRuntime` owns `Schedule`/`Cancel` timer jobs and routes timer results through the same serialized actor.
+Phase 4 `MeshEffect` categories are `ReinjectPacket`, `ComputePacketDigest`, `VerifySignature`, `DecodeFragmentPayload`, `EncodeRelay`, `RequestEntropy`, `Schedule`, `Cancel`, `WriteLink`, `CloseLink`, and `PublishPublicPayload`. `MeshEffectExecutor` executes provider effects and returns at most one correlated `MeshEvent`; cancellation is rethrown and ordinary executor exceptions become redacted `EffectFailed(EFFECT_EXECUTION_FAILED)` events. `MeshRuntime` owns `ReinjectPacket` protocol adaptation and `Schedule`/`Cancel` timer jobs, routing their successful results through the same serialized actor.
 
 The representative persistence and cross-engine effects below remain future architecture, not Phase 4 implementation.
 
@@ -151,18 +148,18 @@ MeshState(generation, lifecycle, links, provisionalBindings,
 MeshEvent(LinkObserved, PacketDecoded, PacketDigestComputed, SignatureVerified,
           FragmentPayloadDecoded, RelayEncoded, EntropyProvided, TimerElapsed,
           LinkCompleted, EffectFailed, RuntimeStarted, RuntimeStopping)
-MeshEffect(DecodePacket, ComputePacketDigest, VerifySignature,
+MeshEffect(ReinjectPacket, ComputePacketDigest, VerifySignature,
            DecodeFragmentPayload, EncodeRelay, RequestEntropy,
            Schedule, Cancel, WriteLink, CloseLink, PublishPublicPayload)
 ```
 
-Admission is `LinkEvent.PayloadReceived -> DecodePacket -> PendingAdmission(AwaitingDigest) -> ComputePacketDigest -> PendingAdmission(AwaitingSignature)` when required -> `VerifySignature` -> atomic insertion into `admittedPackets` -> publication and/or relay. Invalid authentication removes only pending state and emits no publication or relay effect; it cannot consume or evict authoritative dedup capacity.
+Admission is `LinkEvent.PayloadReceived -> MeshProtocolAdapter -> PacketDecoded -> PendingAdmission(AwaitingDigest) -> ComputePacketDigest -> PendingAdmission(AwaitingSignature)` when required -> `VerifySignature` -> atomic insertion into `admittedPackets` -> publication and/or relay. `PacketDecoded` contains the decoded packet, retained raw bytes, link/reassembly context, and protocol-owned signing transcript when signed. Invalid authentication removes only pending state and emits no publication or relay effect; it cannot consume or evict authoritative dedup capacity.
 
 Default limits are 32 links; 256 provisional observations (8/link); 256 pending admissions (8/link), 128 KiB each and 4 MiB aggregate with 15-second expiry; 10,000 admitted packet IDs with 5-minute expiry; 64 fragment streams (4/source), 256 fragments/stream, 128 KiB/stream and 4 MiB aggregate with 30-second expiry; 512 route observations (16/source) with 3-minute expiry; 512 scheduled relays (8/source), fanout 8; and 256-slot event, effect, and trace buffers. Capacity is checked before growth; live admitted IDs are never evicted to admit new data.
 
-Local publication is independent of relay TTL. Received TTL 0 or 1 is not relayed; otherwise outgoing TTL is `min(received, 7) - 1`. Relay targets exclude ingress, closed/not-ready links, and links whose maximum write size is too small. A unique source-route next-hop binding wins; otherwise eligible links are ordered by `LinkId.value` and capped by `maxRelayFanout`. Two supplied entropy bytes map to a deterministic `0..500 ms` delay. This fallback is intentionally conservative and is not a claim of exact Apple/Android fanout parity.
+Local publication is independent of relay TTL. Received TTL 0 or 1 is not relayed. For other inputs the current outgoing TTL is `min(received, RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1`, where the local cap is 7. Canonical dual-upstream evidence proves the concrete `7 -> 6` mutation, but not a universal maximum or `255 -> 6`; the cap is an explicit BitMessage-local resource policy. Relay targets exclude ingress, closed/not-ready links, and links whose maximum write size is too small. A unique source-route next-hop binding wins; otherwise eligible links are ordered by `LinkId.value` and capped by `maxRelayFanout`. Two supplied entropy bytes map to a deterministic `0..500 ms` delay. This fallback is intentionally conservative and is not a claim of exact Apple/Android fanout parity.
 
-Fragment payload metadata is decoded by `:protocol:bitchat`. Identical duplicate fragments are ignored without extending expiry. Metadata or byte conflicts destroy the stream. Completion assembles ascending indexes, removes the stream, and emits `DecodePacket` with `PacketSource.Reassembled`; the result traverses the normal admission/authentication path without recursive reducer entry. Outer-fragment relay remains profile-blocked.
+Fragment payload metadata is decoded by `:protocol:bitchat`. Identical duplicate fragments are ignored without extending expiry. Metadata or byte conflicts destroy the stream. Completion assembles ascending indexes, removes the stream, and emits `ReinjectPacket` with `PacketSource.Reassembled`; the runtime protocol adapter decodes it and only a successful `PacketDecoded` traverses the normal admission/authentication path. Outer-fragment relay remains profile-blocked.
 
 ### NoiseSessionEngine
 

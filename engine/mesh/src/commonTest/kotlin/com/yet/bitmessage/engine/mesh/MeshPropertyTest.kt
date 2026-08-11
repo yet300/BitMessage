@@ -5,12 +5,13 @@ import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.foundation.Transition
 import com.yet.bitmessage.model.LinkId
-import com.yet.bitmessage.protocol.bitchat.BitchatCodec
 import com.yet.bitmessage.protocol.bitchat.DecodeError
 import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.DecodedPacket
 import com.yet.bitmessage.protocol.bitchat.FragmentPayloadCodec
 import com.yet.bitmessage.protocol.bitchat.RelayEncoding
+import com.yet.bitmessage.engine.mesh.runtime.MeshProtocolAdapter
+import com.yet.bitmessage.engine.mesh.runtime.PacketIngress
 import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkCloseReason
 import com.yet.bitmessage.transport.api.LinkEvent
@@ -39,10 +40,7 @@ class MeshPropertyTest {
             )
             events.forEach { event ->
                 coverage += event.coverage()
-                if (event is MeshEvent.LinkObserved &&
-                    event.event is LinkEvent.PayloadReceived &&
-                    event.event.bytes == MeshFixtures.broadcastPacket.rawPacket.wireBytes
-                ) {
+                if (event is MeshEvent.PacketDecoded && event.packet == MeshFixtures.broadcastPacket) {
                     broadcastPlacements += 1
                 }
             }
@@ -172,7 +170,7 @@ class MeshPropertyTest {
             assertTrue(relay.targets.size <= limits.maxRelayFanout, context)
             assertTrue(relay.packet.ttl >= 2u, context)
             assertEquals(
-                minOf(relay.packet.ttl.toInt(), 7) - 1,
+                minOf(relay.packet.ttl.toInt(), RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1,
                 relay.outgoingTtl.toInt(),
                 context,
             )
@@ -188,7 +186,7 @@ class MeshPropertyTest {
         transition.effects.filterIsInstance<MeshEffect.RequestEntropy>().forEach { request ->
             assertTrue(request.packet.ttl >= 2u, context)
             assertEquals(
-                minOf(request.packet.ttl.toInt(), 7) - 1,
+                minOf(request.packet.ttl.toInt(), RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1,
                 request.outgoingTtl.toInt(),
                 context,
             )
@@ -197,7 +195,7 @@ class MeshPropertyTest {
             assertTrue(relay.targets.size <= limits.maxRelayFanout, context)
             assertTrue(relay.packet.ttl >= 2u, context)
             assertEquals(
-                minOf(relay.packet.ttl.toInt(), 7) - 1,
+                minOf(relay.packet.ttl.toInt(), RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1,
                 relay.outgoingTtl.toInt(),
                 context,
             )
@@ -247,20 +245,14 @@ class MeshPropertyTest {
                 5 -> payload(signedPacket)
                 6 -> payload(if (random.nextInt(2) == 0) fragmentZeroPacket else fragmentOnePacket)
                 7 -> closed(randomLink())
-                8 -> MeshEvent.LinkObserved(
-                    generation = state.generation.next(),
+                8 -> MeshFixtures.packetDecoded(
+                    eventGeneration = state.generation.next(),
                     observedAt = tick(),
-                    event = LinkEvent.PayloadReceived(
-                        MeshFixtures.linkA,
-                        MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                    ),
                 )
-                9 -> MeshEvent.PacketDecoded(
-                    correlationId = CorrelationId.of("mesh:${state.generation.value}:decode:999999"),
-                    generation = state.generation,
+                9 -> MeshFixtures.packetDecoded(
+                    source = PacketSource.Link(LinkId.of("unknown-link")),
+                    eventGeneration = state.generation,
                     observedAt = tick(),
-                    source = PacketSource.Link(MeshFixtures.linkA),
-                    result = DecodeResult.Failure(DecodeError.MALFORMED_FIELD),
                 )
                 10 -> MeshEvent.EffectFailed(
                     correlationId = CorrelationId.of("mesh:${state.generation.value}:digest:999998"),
@@ -277,17 +269,14 @@ class MeshPropertyTest {
 
         private fun eventFor(effect: MeshEffect): MeshEvent =
             when (effect) {
-                is MeshEffect.DecodePacket -> MeshEvent.PacketDecoded(
-                    correlationId = effect.correlationId,
-                    generation = effect.generation,
-                    observedAt = tick(),
-                    source = effect.source,
-                    result = if (random.nextInt(8) == 0) {
-                        DecodeResult.Failure(DecodeError.MALFORMED_FIELD)
-                    } else {
-                        BitchatCodec.decode(effect.bytes)
-                    },
-                )
+                is MeshEffect.ReinjectPacket -> assertIs<PacketIngress.Accepted>(
+                    MeshProtocolAdapter.decode(
+                        generation = effect.generation,
+                        observedAt = tick(),
+                        source = effect.source,
+                        bytes = effect.bytes,
+                    ),
+                ).event
                 is MeshEffect.ComputePacketDigest -> MeshEvent.PacketDigestComputed(
                     correlationId = effect.correlationId,
                     generation = effect.generation,
@@ -431,14 +420,11 @@ class MeshPropertyTest {
                 ),
             )
 
-        private fun payload(packet: DecodedPacket): MeshEvent.LinkObserved =
-            MeshEvent.LinkObserved(
-                generation = state.generation,
+        private fun payload(packet: DecodedPacket): MeshEvent.PacketDecoded =
+            MeshFixtures.packetDecoded(
+                packet = packet,
+                eventGeneration = state.generation,
                 observedAt = tick(),
-                event = LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    packet.rawPacket.wireBytes,
-                ),
             )
 
         private fun closed(linkId: LinkId): MeshEvent.LinkObserved =
@@ -485,12 +471,16 @@ class MeshPropertyTest {
 
     private fun MeshEvent.coverage(): SequenceCoverage =
         when (this) {
-            is MeshEvent.LinkObserved -> when {
-                generation != MeshFixtures.generation -> SequenceCoverage.STALE_GENERATION
-                event is LinkEvent.PayloadReceived -> SequenceCoverage.PAYLOAD
-                else -> SequenceCoverage.LINK_CHURN
+            is MeshEvent.LinkObserved -> if (generation != MeshFixtures.generation) {
+                SequenceCoverage.STALE_GENERATION
+            } else {
+                SequenceCoverage.LINK_CHURN
             }
-            is MeshEvent.PacketDecoded -> SequenceCoverage.DECODE
+            is MeshEvent.PacketDecoded -> when {
+                generation != MeshFixtures.generation -> SequenceCoverage.STALE_GENERATION
+                packet == MeshFixtures.broadcastPacket -> SequenceCoverage.PAYLOAD
+                else -> SequenceCoverage.DECODE
+            }
             is MeshEvent.PacketDigestComputed -> SequenceCoverage.DIGEST
             is MeshEvent.SignatureVerified -> SequenceCoverage.AUTHENTICATION
             is MeshEvent.FragmentPayloadDecoded -> SequenceCoverage.FRAGMENT
@@ -508,24 +498,9 @@ class MeshPropertyTest {
         const val SEED_COUNT: Int = 100
         const val EVENTS_PER_SEED: Int = 250
 
-        val signedPacket: DecodedPacket = decode(
-            Bytes.copyOf(
-                bytes("0202070102030405060708020000000200112233445566774142").copyToByteArray() +
-                    ByteArray(64) { 0x5a },
-            ),
-        )
-        val fragmentZeroPacket: DecodedPacket = decode(
-            bytes(
-                "0220030102030405060708000000001a0011223344556677" +
-                    "0001020304050607000000020202020301020304050607080000",
-            ),
-        )
-        val fragmentOnePacket: DecodedPacket = decode(
-            bytes(
-                "0220030102030405060708000000001a0011223344556677" +
-                    "0001020304050607000100020200000200112233445566774142",
-            ),
-        )
+        val signedPacket: DecodedPacket = MeshFixtures.signedPacket
+        val fragmentZeroPacket: DecodedPacket = MeshFixtures.fragmentZeroPacket
+        val fragmentOnePacket: DecodedPacket = MeshFixtures.fragmentOnePacket
 
         fun stableDigest(input: Bytes): Bytes {
             var hash = 0x811c9dc5u
@@ -540,9 +515,5 @@ class MeshPropertyTest {
             )
         }
 
-        fun bytes(hex: String): Bytes = MeshFixtures.bytes(hex)
-
-        fun decode(bytes: Bytes): DecodedPacket =
-            assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(bytes)).value
     }
 }

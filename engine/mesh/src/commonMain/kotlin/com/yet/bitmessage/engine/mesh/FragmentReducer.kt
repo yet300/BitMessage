@@ -150,12 +150,11 @@ private fun startFragmentStream(
         return rejectedFragment(state, event.correlationId)
     }
     if (fragment.total == 1.toUShort()) {
-        val issued = state.issueCorrelation(MeshOperation.DECODE_PACKET)
         return Transition(
-            state = issued.state,
+            state = state,
             effects = listOf(
-                MeshEffect.DecodePacket(
-                    correlationId = issued.correlationId,
+                MeshEffect.ReinjectPacket(
+                    correlationId = event.correlationId,
                     generation = event.generation,
                     source = PacketSource.Reassembled(request.source.ingressLink, fragment.id),
                     bytes = fragment.data,
@@ -237,17 +236,16 @@ private fun completeFragmentStream(
         fragmentStreams = SnapshotMap(streams),
         aggregateFragmentBytes = state.aggregateFragmentBytes - stream.retainedBytes,
     )
-    val issued = withoutStream.issueCorrelation(MeshOperation.DECODE_PACKET)
     return Transition(
-        state = issued.state,
+        state = withoutStream,
         effects = listOf(
             MeshEffect.Cancel(
                 correlationId = stream.timerCorrelationId,
                 generation = event.generation,
                 timerId = stream.timerId,
             ),
-            MeshEffect.DecodePacket(
-                correlationId = issued.correlationId,
+            MeshEffect.ReinjectPacket(
+                correlationId = event.correlationId,
                 generation = event.generation,
                 source = PacketSource.Reassembled(stream.ingressLink, key.fragmentId),
                 bytes = joined,

@@ -11,7 +11,7 @@ val productionCompatibilityResultFiles = fileTree(layout.buildDirectory.dir("tes
 
 val cleanProductionCompatibilityTestResults = tasks.register<Delete>("cleanProductionCompatibilityTestResults") {
     group = "verification"
-    description = "Removes prior Android-host protocol results before the Phase 3 production gate runs."
+    description = "Removes prior Android-host protocol results before the Phase 1-4 production gate runs."
     delete(layout.buildDirectory.dir("test-results/testAndroidHostTest"))
 }
 
@@ -26,7 +26,7 @@ productionCompatibilityTest.configureEach {
 
 tasks.register("productionCompatibilityCheck") {
     group = "verification"
-    description = "Runs the fresh Phase 3 production coverage report and fails when it did not execute."
+    description = "Runs the fresh Phase 1-4 production coverage report and fails when it did not execute."
     dependsOn(cleanProductionCompatibilityTestResults, "testAndroidHostTest")
     inputs.files(productionCompatibilityResultFiles)
 
@@ -37,16 +37,16 @@ tasks.register("productionCompatibilityCheck") {
                 it.name == "TEST-com.yet.bitmessage.protocol.bitchat.ProductionFixtureCoverageTest.xml"
             },
         ) {
-            "Phase 3 production gate requires a fresh ProductionFixtureCoverageTest result."
+            "Phase 1-4 production gate requires a fresh ProductionFixtureCoverageTest result."
         }
         check(coverageResult.isFile) {
-            "Phase 3 production gate requires a fresh ProductionFixtureCoverageTest result."
+            "Phase 1-4 production gate requires a fresh ProductionFixtureCoverageTest result."
         }
         val executedTests = documentBuilder.parse(coverageResult).documentElement.getAttribute("tests").toInt()
         check(executedTests > 0) {
-            "Phase 3 production gate requires ProductionFixtureCoverageTest to execute; found $executedTests."
+            "Phase 1-4 production gate requires ProductionFixtureCoverageTest to execute; found $executedTests."
         }
-        logger.lifecycle("Phase 3 production compatibility gate executed {} coverage tests.", executedTests)
+        logger.lifecycle("Phase 1-4 production compatibility gate executed {} coverage tests.", executedTests)
     }
 }
 

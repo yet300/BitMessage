@@ -2,7 +2,10 @@ package com.yet.bitmessage.protocol.bitchat
 
 import com.yet.bitmessage.foundation.Bytes
 
-/** No Phase 1 fixture supplies a canonical signing transcript for this profile. */
+/**
+ * Canonical known answers are fixture IDs `apple-phase4-signing-relay` and
+ * `android-phase4-signing-relay` in `BitchatBaseline2026_08`.
+ */
 object SigningTranscript {
     fun build(packet: DecodedPacket): DecodeResult<Bytes> {
         if (packet.flags.isCompressed || packet.flags.hasPadding) {

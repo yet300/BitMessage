@@ -16,7 +16,7 @@ sealed interface MeshEffect {
     val correlationId: CorrelationId
     val generation: Generation
 
-    data class DecodePacket(
+    data class ReinjectPacket(
         override val correlationId: CorrelationId,
         override val generation: Generation,
         val source: PacketSource,

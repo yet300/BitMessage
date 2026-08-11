@@ -2,8 +2,6 @@ package com.yet.bitmessage.engine.mesh
 
 import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.TimerId
-import com.yet.bitmessage.protocol.bitchat.DecodeError
-import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkCloseReason
 import com.yet.bitmessage.transport.api.LinkEvent
@@ -55,20 +53,14 @@ class LinkReducerTest {
     }
 
     @Test
-    fun bytesReceivedEmitsDecodeWithoutParsingOrPendingAllocationInsideTheEngine() {
+    fun decodedPacketStartsAdmissionWithoutACodecEffect() {
         val engine = MeshEngine()
         val state = stateWithReadyLink(engine)
-        val wire = MeshFixtures.broadcastPacket.rawPacket.wireBytes
-        val transition = engine.reduce(
-            state,
-            observed(LinkEvent.PayloadReceived(MeshFixtures.linkA, wire)),
-        )
+        val transition = engine.reduce(state, MeshFixtures.packetDecoded())
 
-        val decode = assertIs<MeshEffect.DecodePacket>(transition.effects.single())
-        assertEquals(wire, decode.bytes)
-        assertEquals(PacketSource.Link(MeshFixtures.linkA), decode.source)
-        assertEquals("mesh:3:decode:0", decode.correlationId.value)
-        assertTrue(transition.state.pendingAdmissions.isEmpty())
+        val digest = transition.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
+        assertEquals("mesh:3:digest:0", digest.correlationId.value)
+        assertEquals(PacketSource.Link(MeshFixtures.linkA), transition.state.pendingAdmissions.getValue(digest.correlationId).source)
         assertEquals(1, transition.state.nextCorrelationSequence)
     }
 
@@ -80,85 +72,43 @@ class LinkReducerTest {
         )
         val engine = MeshEngine(limits)
         val state = stateWithReadyLink(engine)
-        val rejected = engine.reduce(
-            state,
-            observed(
-                LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                ),
-            ),
-        )
+        val rejected = engine.reduce(state, MeshFixtures.packetDecoded())
 
         assertEquals(state, rejected.state)
         assertTrue(rejected.effects.isEmpty())
     }
 
     @Test
-    fun decodeSuccessReservesBoundedPendingStateAndDecodeFailureDoesNot() {
+    fun decodedPacketReservesBoundedPendingState() {
         val engine = MeshEngine()
-        val decodeRequest = requestDecode(engine)
-        val success = engine.reduce(
-            decodeRequest.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decodeRequest.effect.correlationId,
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                source = decodeRequest.effect.source,
-                result = DecodeResult.Success(MeshFixtures.broadcastPacket),
-            ),
-        )
+        val success = engine.reduce(stateWithReadyLink(engine), MeshFixtures.packetDecoded())
+        val digest = success.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
 
         val pending = assertIs<PendingAdmission>(
-            success.state.pendingAdmissions[decodeRequest.effect.correlationId],
+            success.state.pendingAdmissions[digest.correlationId],
         )
         assertEquals(AdmissionStage.AwaitingDigest, pending.stage)
         assertEquals(MeshFixtures.broadcastPacket.rawPacket.wireBytes.size, success.state.aggregatePendingBytes)
         assertEquals(1, success.effects.count { it is MeshEffect.ComputePacketDigest })
         assertEquals(1, success.effects.count { it is MeshEffect.Schedule })
 
-        val failedRequest = requestDecode(engine)
-        val failed = engine.reduce(
-            failedRequest.state,
-            MeshEvent.PacketDecoded(
-                correlationId = failedRequest.effect.correlationId,
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                source = failedRequest.effect.source,
-                result = DecodeResult.Failure(DecodeError.INVALID_LENGTH),
-            ),
-        )
-        assertTrue(failed.state.pendingAdmissions.isEmpty())
-        assertTrue(failed.effects.isEmpty())
     }
 
     @Test
-    fun staleGenerationAndUnknownDecodeCorrelationCannotMutateState() {
+    fun staleGenerationAndUnknownIngressLinkCannotMutateState() {
         val engine = MeshEngine()
-        val request = requestDecode(engine)
+        val state = stateWithReadyLink(engine)
         val stale = engine.reduce(
-            request.state,
-            MeshEvent.PacketDecoded(
-                correlationId = request.effect.correlationId,
-                generation = MeshFixtures.generation.next(),
-                observedAt = MeshFixtures.now,
-                source = request.effect.source,
-                result = DecodeResult.Success(MeshFixtures.broadcastPacket),
-            ),
+            state,
+            MeshFixtures.packetDecoded(eventGeneration = MeshFixtures.generation.next()),
         )
         val unknown = engine.reduce(
-            request.state,
-            MeshEvent.PacketDecoded(
-                correlationId = CorrelationId.of("foreign-decode"),
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                source = request.effect.source,
-                result = DecodeResult.Success(MeshFixtures.broadcastPacket),
-            ),
+            state,
+            MeshFixtures.packetDecoded(source = PacketSource.Link(MeshFixtures.linkB)),
         )
 
-        assertEquals(request.state, stale.state)
-        assertEquals(request.state, unknown.state)
+        assertEquals(state, stale.state)
+        assertEquals(state, unknown.state)
         assertTrue(stale.effects.isEmpty())
         assertTrue(unknown.effects.isEmpty())
     }
@@ -205,25 +155,6 @@ class LinkReducerTest {
         )
     }
 
-    private data class DecodeRequest(
-        val state: MeshState,
-        val effect: MeshEffect.DecodePacket,
-    )
-
-    private fun requestDecode(engine: MeshEngine): DecodeRequest {
-        val state = stateWithReadyLink(engine)
-        val transition = engine.reduce(
-            state,
-            observed(
-                LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    MeshFixtures.broadcastPacket.rawPacket.wireBytes,
-                ),
-            ),
-        )
-        return DecodeRequest(transition.state, assertIs(transition.effects.single()))
-    }
-
     private fun stateWithReadyLink(engine: MeshEngine): MeshState =
         engine.reduce(
             MeshFixtures.state(),
@@ -241,6 +172,7 @@ class LinkReducerTest {
         PendingAdmission(
             source = PacketSource.Link(MeshFixtures.linkA),
             packet = MeshFixtures.broadcastPacket,
+            signingTranscript = null,
             stage = AdmissionStage.AwaitingDigest,
             retainedBytes = MeshFixtures.broadcastPacket.rawPacket.wireBytes.size,
             expiresAt = MeshFixtures.now.plus(15.seconds),

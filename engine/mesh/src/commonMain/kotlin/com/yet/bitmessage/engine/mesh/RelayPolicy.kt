@@ -13,8 +13,14 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 internal object RelayPolicy {
+    /**
+     * A conservative BitMessage-local resource policy, not a cross-client compatibility constant.
+     * Canonical evidence proves the concrete upstream-compatible 7 -> 6 relay mutation only.
+     */
+    const val LOCAL_MAX_RECEIVED_TTL: Int = 7
+
     fun outgoingTtl(received: UByte): UByte? {
-        val capped = minOf(received.toInt(), MAX_RELAY_TTL)
+        val capped = minOf(received.toInt(), LOCAL_MAX_RECEIVED_TTL)
         return if (capped < MIN_RELAY_INPUT_TTL) null else (capped - 1).toUByte()
     }
 
@@ -66,7 +72,6 @@ internal object RelayPolicy {
         return link.capabilities.writeReady && link.capabilities.maxWriteBytes >= encodedSize
     }
 
-    private const val MAX_RELAY_TTL: Int = 7
     private const val MIN_RELAY_INPUT_TTL: Int = 2
     private const val RELAY_ENTROPY_BYTES: Int = 2
     private const val RELAY_DELAY_VALUES: Int = 501

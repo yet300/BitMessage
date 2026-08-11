@@ -29,27 +29,9 @@ class MeshEngineCoverageTest {
             ).state
         }
 
-        val received = engine.reduce(
-            state,
-            MeshEvent.LinkObserved(
-                generation = MeshFixtures.generation,
-                observedAt = MeshFixtures.now,
-                event = LinkEvent.PayloadReceived(
-                    MeshFixtures.linkA,
-                    signedPacket.rawPacket.wireBytes,
-                ),
-            ),
-        )
-        val decode = received.effects.filterIsInstance<MeshEffect.DecodePacket>().single()
         val decoded = engine.reduce(
-            received.state,
-            MeshEvent.PacketDecoded(
-                correlationId = decode.correlationId,
-                generation = decode.generation,
-                observedAt = MeshFixtures.now,
-                source = decode.source,
-                result = DecodeResult.Success(signedPacket),
-            ),
+            state,
+            MeshFixtures.packetDecoded(signedPacket),
         )
         val digest = decoded.effects.filterIsInstance<MeshEffect.ComputePacketDigest>().single()
         val digested = engine.reduce(
@@ -136,16 +118,8 @@ class MeshEngineCoverageTest {
     }
 
     private companion object {
-        val signedPacket: DecodedPacket = assertIs<DecodeResult.Success<DecodedPacket>>(
-            BitchatCodec.decode(
-                Bytes.copyOf(
-                    bytes("0202070102030405060708020000000200112233445566774142").copyToByteArray() +
-                        ByteArray(64) { 0x5a },
-                ),
-            ),
-        ).value
-        val sha256Digest: Bytes =
-            bytes("25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda")
+        val signedPacket: DecodedPacket = MeshFixtures.signedPacket
+        val sha256Digest: Bytes = MeshFixtures.fakeSha256Digest
 
         fun bytes(hex: String): Bytes = MeshFixtures.bytes(hex)
     }

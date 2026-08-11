@@ -31,9 +31,9 @@ class CompatibilityCorpusTest {
     @Test
     fun dualUpstreamCorpusHasIndependentOriginsAndReciprocalAcceptance() {
         val accepted = manifest.fixtures.filter { it.expectedOutcome.status == FixtureOutcomeStatus.ACCEPT }
-        assertEquals(14, accepted.size)
-        assertEquals(7, accepted.count { it.provenance.producer == FixtureProducer.APPLE })
-        assertEquals(7, accepted.count { it.provenance.producer == FixtureProducer.ANDROID })
+        assertEquals(20, accepted.size)
+        assertEquals(10, accepted.count { it.provenance.producer == FixtureProducer.APPLE })
+        assertEquals(10, accepted.count { it.provenance.producer == FixtureProducer.ANDROID })
         accepted.forEach { fixture ->
             assertEquals(setOf(UpstreamClient.APPLE, UpstreamClient.ANDROID), fixture.provenance.acceptedBy.toSet(), fixture.id)
         }
@@ -41,18 +41,18 @@ class CompatibilityCorpusTest {
 
     @Test
     fun corpusHasRequiredLiteralAndHostileFamilies() {
-        assertEquals(46, manifest.fixtures.size)
+        assertEquals(52, manifest.fixtures.size)
         assertEquals(
             mapOf(
                 FixtureCategory.ANNOUNCEMENT to 6,
                 FixtureCategory.CAPABILITIES to 3,
                 FixtureCategory.COMPRESSION to 4,
-                FixtureCategory.FRAGMENT to 2,
+                FixtureCategory.FRAGMENT to 4,
                 FixtureCategory.MALFORMED to 13,
                 FixtureCategory.NOISE to 4,
                 FixtureCategory.NOSTR to 1,
-                FixtureCategory.OUTER_PACKET to 10,
-                FixtureCategory.SIGNING to 1,
+                FixtureCategory.OUTER_PACKET to 12,
+                FixtureCategory.SIGNING to 3,
                 FixtureCategory.SYNC to 2,
             ),
             manifest.fixtures.groupingBy(CompatibilityFixture::category).eachCount(),
@@ -73,6 +73,9 @@ class CompatibilityCorpusTest {
             "drift-announce-v2-0x2c", "drift-authenticated-peer-state-0x21", "drift-peer-id-short", "drift-peer-id-long",
             "drift-foreign-compressed-representation", "drift-decompression-cap-boundary", "drift-neighbor-encoding-ambiguity",
             "drift-gcs-signed-unsigned", "drift-noise-message-three-48", "drift-noise-message-three-64",
+            "apple-phase4-packet-identity", "android-phase4-packet-identity",
+            "apple-phase4-signing-relay", "android-phase4-signing-relay",
+            "apple-phase4-fragment-reassembly", "android-phase4-fragment-reassembly",
         )
         assertEquals(requiredIds, manifest.fixtures.map(CompatibilityFixture::id).toSet())
     }

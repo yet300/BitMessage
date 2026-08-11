@@ -108,6 +108,7 @@ class MeshStateContractTest {
         val pending = PendingAdmission(
             source = PacketSource.Link(MeshFixtures.linkA),
             packet = MeshFixtures.broadcastPacket,
+            signingTranscript = null,
             stage = AdmissionStage.AwaitingDigest,
             retainedBytes = MeshFixtures.broadcastPacket.rawPacket.wireBytes.size,
             expiresAt = MeshFixtures.now.plus(15.seconds),
@@ -134,18 +135,18 @@ class MeshStateContractTest {
     @Test
     fun correlationIssuanceIsDeterministicTypedAndChecked() {
         val initial = MeshFixtures.state()
-        val first = initial.issueCorrelation(MeshOperation.DECODE_PACKET)
-        val replayed = initial.issueCorrelation(MeshOperation.DECODE_PACKET)
-        val second = first.state.issueCorrelation(MeshOperation.COMPUTE_DIGEST)
+        val first = initial.issueCorrelation(MeshOperation.COMPUTE_DIGEST)
+        val replayed = initial.issueCorrelation(MeshOperation.COMPUTE_DIGEST)
+        val second = first.state.issueCorrelation(MeshOperation.VERIFY_SIGNATURE)
 
         assertEquals(first, replayed)
-        assertEquals("mesh:3:decode:0", first.correlationId.value)
-        assertEquals("mesh:3:digest:1", second.correlationId.value)
+        assertEquals("mesh:3:digest:0", first.correlationId.value)
+        assertEquals("mesh:3:verify:1", second.correlationId.value)
         assertEquals(2, second.state.nextCorrelationSequence)
         assertNotEquals(first.correlationId, second.correlationId)
         assertFailsWith<IllegalStateException> {
             initial.copy(nextCorrelationSequence = Long.MAX_VALUE)
-                .issueCorrelation(MeshOperation.DECODE_PACKET)
+                .issueCorrelation(MeshOperation.COMPUTE_DIGEST)
         }
     }
 
@@ -160,6 +161,7 @@ class MeshStateContractTest {
                     pendingId to PendingAdmission(
                         source = PacketSource.Link(MeshFixtures.linkA),
                         packet = MeshFixtures.broadcastPacket,
+                        signingTranscript = null,
                         stage = AdmissionStage.AwaitingDigest,
                         retainedBytes = retainedBytes,
                         expiresAt = MeshFixtures.now,
