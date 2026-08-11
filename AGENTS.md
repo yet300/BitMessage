@@ -31,6 +31,10 @@ BitMessage/
 │   └── testing/                Phase 1 compatibility fixtures and test harnesses
 ├── protocol/
 │   └── bitchat/                Pure BitChat wire codec
+├── transport/
+│   └── api/                    Transport-neutral link contracts
+├── engine/
+│   └── mesh/                   Deterministic mesh reducer and runtime
 ├── build-logic/
 │   └── convention/             Local Gradle convention plugins
 ├── gradle/
@@ -53,6 +57,8 @@ BitMessage/
 | `:core:model` | Typed kernel models | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` |
 | `:core:testing` | Test-only compatibility fixture models, loaders, and validation gates | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`; neutral fixture resources are consumed by tests only |
 | `:protocol:bitchat` | Pure BitChat wire model and codec | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` and `:core:model`; test scope may depend on `:core:testing` |
+| `:transport:api` | Transport-neutral link observations, commands, capabilities, and typed results | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` and `:core:model` |
+| `:engine:mesh` | Bounded deterministic mesh reducer and serialized runtime | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`, `:core:model`, `:protocol:bitchat`, and `:transport:api`; test scope may depend on `:core:testing` |
 | `build-logic:convention` | Shared Gradle configuration for multiplatform modules | Included build, not application runtime code |
 
 Current dependency direction:
@@ -63,6 +69,8 @@ iosApp ----------------> sharedLogic -> core:common
 core:model -----------------------> core:foundation
 compatibility fixtures -----------> core:testing -> core:foundation
 protocol:bitchat -----------------> core:foundation, core:model
+transport:api --------------------> core:foundation, core:model
+engine:mesh ----------------------> core:foundation, core:model, protocol:bitchat, transport:api
 ```
 
 Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Production modules must not depend on `:core:testing`, and lower-level modules must not import application entry points or UI modules.
@@ -146,6 +154,9 @@ Run commands from the repository root with the checked-in Gradle wrapper.
 
 # Run BitChat protocol module tests
 ./gradlew :protocol:bitchat:allTests
+
+# Run transport contracts and require a non-zero Phase 4 mesh test
+./gradlew :transport:api:allTests :engine:mesh:meshEngineCheck :engine:mesh:allTests
 
 # Link the shared framework for the iOS simulator
 ./gradlew :sharedLogic:linkDebugFrameworkIosSimulatorArm64

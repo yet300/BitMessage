@@ -42,5 +42,11 @@ include(":core:testing")
 
 include(":protocol:bitchat")
 
+include(":transport")
+include(":transport:api")
+
+include(":engine")
+include(":engine:mesh")
+
 include(":feature")
 include(":feature:root")
