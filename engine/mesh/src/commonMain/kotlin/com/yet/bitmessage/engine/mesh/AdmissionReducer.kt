@@ -222,6 +222,7 @@ internal fun reduceTimer(
     if (event.generation != state.generation || state.lifecycle != MeshLifecycle.RUNNING) {
         return ignoredAdmission(state, event.correlationId, stale = event.generation != state.generation)
     }
+    reduceRelayTimerOrNull(state, event)?.let { return it }
     val pending = state.pendingAdmissions[event.correlationId]
     if (pending != null) {
         if (pending.timeoutTimerId != event.timerId || event.observedAt < pending.expiresAt) {
@@ -364,7 +365,13 @@ private fun admit(
     )
     val topology = scheduleTopologyExpiry(admittedState, observedAt, cancelExisting = true)
     val dedup = scheduleDedupExpiry(topology.state, observedAt, cancelExisting = true)
-    val consequences = admissionConsequences(dedup.state, pending, packetId)
+    val consequences = admissionConsequences(
+        state = dedup.state,
+        pending = pending,
+        packetId = packetId,
+        observedAt = observedAt,
+        limits = limits,
+    )
     return Transition(
         state = consequences.state,
         effects = listOf(withoutPending.cancel) + topology.effects + dedup.effects + consequences.effects,
@@ -552,6 +559,8 @@ private fun admissionConsequences(
     state: MeshState,
     pending: PendingAdmission,
     packetId: PacketId,
+    observedAt: com.yet.bitmessage.foundation.MonotonicTime,
+    limits: MeshLimits,
 ): AdmissionConsequences {
     var updated = state
     val effects = mutableListOf<MeshEffect>()
@@ -571,16 +580,32 @@ private fun admissionConsequences(
                 )
             }
             RelayPolicy.outgoingTtl(pending.packet.ttl)?.let { outgoingTtl ->
-                val entropy = updated.issueCorrelation(MeshOperation.REQUEST_ENTROPY)
-                updated = entropy.state
-                effects += MeshEffect.RequestEntropy(
-                    correlationId = entropy.correlationId,
-                    generation = state.generation,
-                    packetId = packetId,
-                    source = pending.source,
-                    packet = pending.packet,
-                    outgoingTtl = outgoingTtl,
-                )
+                val alreadyPending = updated.pendingRelayEntropy.values.any { it.packetId == packetId } ||
+                    updated.pendingRelayEncodes.values.any { it.packetId == packetId }
+                if (!alreadyPending) {
+                    val entropy = updated.issueCorrelation(MeshOperation.REQUEST_ENTROPY)
+                    val requests = entropy.state.pendingRelayEntropy.toMutableMap().apply {
+                        put(
+                            entropy.correlationId,
+                            PendingRelayEntropy(
+                                packetId = packetId,
+                                source = pending.source,
+                                packet = pending.packet,
+                                outgoingTtl = outgoingTtl,
+                                expiresAt = observedAt.plus(limits.dedupLifetime),
+                            ),
+                        )
+                    }
+                    updated = entropy.state.copy(pendingRelayEntropy = SnapshotMap(requests))
+                    effects += MeshEffect.RequestEntropy(
+                        correlationId = entropy.correlationId,
+                        generation = state.generation,
+                        packetId = packetId,
+                        source = pending.source,
+                        packet = pending.packet,
+                        outgoingTtl = outgoingTtl,
+                    )
+                }
             }
         }
         KnownPacketType.FRAGMENT -> {
@@ -773,6 +798,7 @@ private fun reduceLinkClosed(
     val links = state.links.toMutableMap().apply { remove(linkEvent.linkId) }
     val bindings = state.provisionalBindings.filterValues { it.linkId != linkEvent.linkId }
     val routes = state.routeObservations.filterValues { it.ingressLink != linkEvent.linkId }
+    val pendingLinkWrites = state.pendingLinkWrites.filterValues { it != linkEvent.linkId }
     val effects = removedPending.map { (correlationId, pending) ->
         MeshEffect.Cancel(
             correlationId = correlationId,
@@ -786,6 +812,7 @@ private fun reduceLinkClosed(
             provisionalBindings = SnapshotMap(bindings),
             pendingAdmissions = SnapshotMap(retainedPending),
             routeObservations = SnapshotMap(routes),
+            pendingLinkWrites = SnapshotMap(pendingLinkWrites),
             aggregatePendingBytes = retainedPending.values.sumOf(PendingAdmission::retainedBytes),
         ),
         effects = effects,
@@ -799,7 +826,7 @@ private fun reduceLinkClosed(
     )
 }
 
-private fun MeshState.wasIssued(
+internal fun MeshState.wasIssued(
     correlationId: CorrelationId,
     operation: MeshOperation,
 ): Boolean {

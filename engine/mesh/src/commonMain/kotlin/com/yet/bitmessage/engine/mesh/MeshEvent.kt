@@ -5,6 +5,7 @@ import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.Generation
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.foundation.TimerId
+import com.yet.bitmessage.model.LinkId
 import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.DecodedPacket
 import com.yet.bitmessage.protocol.bitchat.EncodeResult
@@ -81,6 +82,7 @@ sealed interface MeshEvent {
         override val generation: Generation,
         override val observedAt: MonotonicTime,
         val packetId: PacketId,
+        val targets: SnapshotList<LinkId>,
         val result: EncodeResult,
     ) : MeshAsyncEvent
 

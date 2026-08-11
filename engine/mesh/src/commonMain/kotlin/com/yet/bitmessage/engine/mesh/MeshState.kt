@@ -140,6 +140,21 @@ data class ScheduledRelay(
     val expiresAt: MonotonicTime,
 )
 
+data class PendingRelayEntropy(
+    val packetId: PacketId,
+    val source: PacketSource,
+    val packet: DecodedPacket,
+    val outgoingTtl: UByte,
+    val expiresAt: MonotonicTime,
+)
+
+data class PendingRelayEncode(
+    val packetId: PacketId,
+    val sourcePeer: WirePeerId,
+    val targets: SnapshotList<LinkId>,
+    val expiresAt: MonotonicTime,
+)
+
 data class ExpiryTimer(
     val correlationId: CorrelationId,
     val timerId: TimerId,
@@ -158,6 +173,9 @@ data class MeshState(
     val fragmentStreams: SnapshotMap<FragmentStreamKey, FragmentStream> = SnapshotMap(),
     val routeObservations: SnapshotMap<PacketId, RouteObservation> = SnapshotMap(),
     val scheduledRelays: SnapshotMap<PacketId, ScheduledRelay> = SnapshotMap(),
+    val pendingRelayEntropy: SnapshotMap<CorrelationId, PendingRelayEntropy> = SnapshotMap(),
+    val pendingRelayEncodes: SnapshotMap<CorrelationId, PendingRelayEncode> = SnapshotMap(),
+    val pendingLinkWrites: SnapshotMap<CorrelationId, LinkId> = SnapshotMap(),
     val dedupExpiryTimer: ExpiryTimer? = null,
     val topologyExpiryTimer: ExpiryTimer? = null,
     val aggregatePendingBytes: Int = 0,
@@ -168,6 +186,9 @@ data class MeshState(
         require(aggregatePendingBytes >= 0) { "Aggregate pending bytes must not be negative." }
         require(aggregateFragmentBytes >= 0) { "Aggregate fragment bytes must not be negative." }
         require(nextCorrelationSequence >= 0) { "Correlation sequence must not be negative." }
+        require(pendingLinkWrites.values.size == pendingLinkWrites.values.toSet().size) {
+            "At most one link write may be outstanding per link."
+        }
         require(aggregatePendingBytes == checkedByteTotal(pendingAdmissions.values.map(PendingAdmission::retainedBytes))) {
             "Aggregate pending bytes must match pending admission state."
         }
@@ -211,6 +232,8 @@ fun MeshState.issueCorrelation(operation: MeshOperation): CorrelationIssue {
 internal fun MeshState.prepareForCapacity(observedAt: MonotonicTime): MeshState {
     val pending = pendingAdmissions.filterValues { it.expiresAt > observedAt }
     val fragments = fragmentStreams.filterValues { it.expiresAt > observedAt }
+    val relayEntropy = pendingRelayEntropy.filterValues { it.expiresAt > observedAt }
+    val relayEncodes = pendingRelayEncodes.filterValues { it.expiresAt > observedAt }
     return copy(
         observedAt = observedAt,
         provisionalBindings = SnapshotMap(
@@ -225,6 +248,8 @@ internal fun MeshState.prepareForCapacity(observedAt: MonotonicTime): MeshState 
         scheduledRelays = SnapshotMap(
             scheduledRelays.filterValues { it.expiresAt > observedAt },
         ),
+        pendingRelayEntropy = SnapshotMap(relayEntropy),
+        pendingRelayEncodes = SnapshotMap(relayEncodes),
         aggregatePendingBytes = checkedByteTotal(pending.values.map(PendingAdmission::retainedBytes)),
         aggregateFragmentBytes = checkedByteTotal(fragments.values.map(FragmentStream::retainedBytes)),
     )

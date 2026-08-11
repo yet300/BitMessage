@@ -52,6 +52,7 @@ sealed interface MeshEffect {
         val packetId: PacketId,
         val packet: DecodedPacket,
         val outgoingTtl: UByte,
+        val targets: SnapshotList<LinkId>,
     ) : MeshEffect
 
     data class RequestEntropy(
