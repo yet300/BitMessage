@@ -17,6 +17,7 @@ enum class MeshTraceTransition(
     DECODE_RESULT("mesh.decode.result"),
     DIGEST_RESULT("mesh.digest.result"),
     SIGNATURE_RESULT("mesh.signature.result"),
+    SIGNATURE_REJECTED("mesh.admission.signature_rejected"),
     ADMISSION("mesh.admission"),
     DUPLICATE("mesh.admission.duplicate"),
     FRAGMENT("mesh.fragment"),

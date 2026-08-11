@@ -140,6 +140,12 @@ data class ScheduledRelay(
     val expiresAt: MonotonicTime,
 )
 
+data class ExpiryTimer(
+    val correlationId: CorrelationId,
+    val timerId: TimerId,
+    val expiresAt: MonotonicTime,
+)
+
 data class MeshState(
     val generation: Generation,
     val localPeer: WirePeerId,
@@ -152,6 +158,8 @@ data class MeshState(
     val fragmentStreams: SnapshotMap<FragmentStreamKey, FragmentStream> = SnapshotMap(),
     val routeObservations: SnapshotMap<PacketId, RouteObservation> = SnapshotMap(),
     val scheduledRelays: SnapshotMap<PacketId, ScheduledRelay> = SnapshotMap(),
+    val dedupExpiryTimer: ExpiryTimer? = null,
+    val topologyExpiryTimer: ExpiryTimer? = null,
     val aggregatePendingBytes: Int = 0,
     val aggregateFragmentBytes: Int = 0,
     val nextCorrelationSequence: Long = 0,
