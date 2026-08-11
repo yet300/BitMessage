@@ -29,6 +29,7 @@ enum class KnownPacketType(
     val value: UByte,
 ) {
     MESSAGE(0x02u),
+    FRAGMENT(0x20u),
 }
 
 @JvmInline

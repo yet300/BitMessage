@@ -81,8 +81,10 @@ internal object V2Codec {
         )
     }
 
-    fun encode(packet: DecodedPacket): EncodeResult {
-        if (packet.type.knownType == null || !BitchatBaseline2026_08.canEmit(packet.type)) {
+    fun encode(packet: DecodedPacket, requireEmittable: Boolean = true): EncodeResult {
+        if (packet.type.knownType == null ||
+            (requireEmittable && !BitchatBaseline2026_08.canEmit(packet.type))
+        ) {
             return EncodeResult.Failure(EncodeError.PROFILE_VIOLATION)
         }
         if (packet.signature != null) return EncodeResult.Failure(EncodeError.UNSUPPORTED_FEATURE)

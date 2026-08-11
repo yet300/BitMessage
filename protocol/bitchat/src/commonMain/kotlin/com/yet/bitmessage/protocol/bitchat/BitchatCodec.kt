@@ -19,9 +19,15 @@ object BitchatCodec {
     }
 
     fun encode(packet: DecodedPacket): EncodeResult =
+        encode(packet, requireEmittable = true)
+
+    internal fun encodeKnown(packet: DecodedPacket): EncodeResult =
+        encode(packet, requireEmittable = false)
+
+    private fun encode(packet: DecodedPacket, requireEmittable: Boolean): EncodeResult =
         when (packet.version.value.toInt()) {
-            1 -> V1Codec.encode(packet)
-            2 -> V2Codec.encode(packet)
+            1 -> V1Codec.encode(packet, requireEmittable)
+            2 -> V2Codec.encode(packet, requireEmittable)
             else -> EncodeResult.Failure(EncodeError.PROFILE_VIOLATION)
         }
 }
