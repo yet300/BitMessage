@@ -2,9 +2,9 @@
 
 ## Purpose and Current State
 
-BitMessage is an early-stage Kotlin Multiplatform application targeting Android and iOS. The repository currently provides the application shells, shared logic, an Android Compose UI module, reusable common utilities, and Gradle convention plugins.
+BitMessage is an early-stage Kotlin Multiplatform application targeting Android and iOS. The repository currently provides application shells, shared logic, an Android Compose UI module, deterministic foundation/model/testing modules, a pure BitChat codec, transport-neutral link contracts, a bounded deterministic mesh reducer/runtime, reusable common utilities, and Gradle convention plugins.
 
-Do not infer implemented product behavior from the project name or version catalog. Messaging protocols, persistence, networking, cryptographic workflows, feature boundaries, and the final navigation architecture are not established in the current source tree. Inspect the code and requirements before introducing them.
+Do not infer a complete messenger from these foundations. Physical networking, persistence, cryptographic implementations, durable identity, delivery/sync/media engines, and final navigation are not implemented. Inspect the code and requirements before introducing them.
 
 ## Start Here
 
@@ -84,6 +84,8 @@ Keep dependencies pointing inward along these paths unless a deliberate architec
 - Keep Compose views and Compose resources in `sharedUI`. Despite its name, `sharedUI` is currently configured only as an Android KMP library; do not claim iOS Compose support until its targets and Xcode integration are added.
 - Put lowest-level portable building blocks in `core:foundation`; keep typed kernel models in `core:model`, which depends only on `core:foundation`.
 - Put broadly reusable, UI-independent primitives in `core:common`. Do not turn it into a dumping ground for feature-specific behavior.
+- Put protocol-neutral link contracts in `transport/api`; keep BitChat types and physical adapter behavior out.
+- Put deterministic mesh state, reducer policy, and its serialized runtime in `engine/mesh`. The reducer remains pure; I/O, entropy, hashing, signature verification, timers, and publication cross typed effect boundaries.
 - Tests belong in the matching source set, normally `commonTest`, `androidHostTest`, or an iOS test source set.
 
 When adding `expect`/`actual`, keep the expected contract small and platform-neutral. Prefer common implementations when no platform API is required.
@@ -169,7 +171,7 @@ Run the narrowest relevant task first. For iOS application UI or signing changes
 
 ## Known Baseline Issues
 
-As of 2026-08-07, the version catalog sets `android-minSdk` to 26 and the documented Android/iOS framework build baseline is green. Before Phase 1, the existing module `allTests` tasks were `NO-SOURCE`; `:core:testing:compatibilityCheck` is the first gate that requires a non-zero executed test count. Do not claim other modules have test coverage until their own source sets contain executed tests.
+As of 2026-08-11, the version catalog sets `android-minSdk` to 26 and the documented Android/iOS framework build baseline is green. Phase 1 compatibility, Phase 2 foundation/model/testing, Phase 3 protocol, and Phase 4 transport/mesh tests execute on their configured targets. Dedicated `compatibilityCheck`, `productionCompatibilityCheck`, and `meshEngineCheck` tasks fail when their required coverage test count is zero. Other pre-existing module `allTests` tasks may remain `NO-SOURCE`; do not claim coverage without fresh test-result evidence.
 
 ## Change Discipline
 

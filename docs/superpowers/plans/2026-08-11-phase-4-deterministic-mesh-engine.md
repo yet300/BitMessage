@@ -8,6 +8,8 @@
 
 **Tech Stack:** Kotlin Multiplatform 2.4.10, Kotlin coroutines 1.11.0, existing foundation `Engine`/time/scheduling/trace values, existing `Bytes` ownership model, `kotlin.test`, `kotlinx-coroutines-test`, pinned Apple and Android upstream harnesses.
 
+**Execution status:** Tasks 1–11 are implemented and committed; tasks 4.1–4.5 have executed Android-host and iOS Simulator tests. Task 12 documentation is complete, and Task 13 final cross-phase verification remains. Phase 5 has not started.
+
 ---
 
 ## Approved scope and implementation constraints
@@ -22,7 +24,7 @@ The recorded pre-implementation baseline is: Phase 1 `compatibilityCheck` 32 And
 
 Task 1 completed in commit `704c2484ff0473f317e131013321e98d40c22c07`. Task 2's disposable harness ran against the exact pinned Apple and Android SHAs before any protocol or engine production implementation. Packet identity, full SHA-256, 16-byte truncation, 13-byte fragment metadata, fragment literals, and out-of-order reassembly matched the planned answers.
 
-The initial signing assertion did not match. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The 26-byte value is therefore the unpadded semantic packet, not the bytes signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Execution stopped without production changes. The user then approved adopting the reproduced 256-byte transcript. Task 2 resumes with the harness asserting that exact prefix, length, and padding, while `compatibility/` remains untouched.
+The initial signing assertion did not match. Both production `toBinaryDataForSigning` helpers call their encoder with padding enabled and emitted a 256-byte transcript: the planned 26-byte core `0202000102030405060708000000000200112233445566774142` followed by 230 bytes of `e6` PKCS#7-style padding. The 26-byte value is therefore the unpadded semantic packet, not the bytes signed by either pinned client. The Apple harness failed its exact assertion, and the independently executed Android harness failed the same assertion. Execution stopped without production changes. The user then approved adopting the reproduced 256-byte transcript. The corrected harness passed against both pinned clients, while `compatibility/` remained untouched.
 
 The implementation must preserve these stage boundaries:
 
@@ -1022,13 +1024,13 @@ rtk git commit -m "feat: add serialized mesh runtime"
 - Modify: `docs/superpowers/plans/2026-08-11-phase-4-deterministic-mesh-engine.md`
 - Modify: `AGENTS.md`
 
-- [ ] Update the repository map and dependency diagram with the actual modules. Record that `LinkId` remains in `:core:model`, transport contracts contain no protocol types, and the engine depends inward on protocol/transport ports.
+- [x] Update the repository map and dependency diagram with the actual modules. Record that `LinkId` remains in `:core:model`, transport contracts contain no protocol types, and the engine depends inward on protocol/transport ports.
 
-- [ ] Replace conceptual Phase 4 state-machine prose with actual type names, bounds, admission ordering, TTL table, relay fallback uncertainty, fragment reinjection, and runtime lifecycle. Do not alter Phase 5 design or claim physical/simulator coverage.
+- [x] Replace conceptual Phase 4 state-machine prose with actual type names, bounds, admission ordering, TTL table, relay fallback uncertainty, fragment reinjection, and runtime lifecycle. Do not alter Phase 5 design or claim physical/simulator coverage.
 
-- [ ] Update the compatibility document only with reproduced facts: packet-ID known answer, fixed-TTL transcript, signature-compatible uncompressed relay, fragment metadata vector, and continued block on compressed signed relay/fanout parity/outer-fragment relay.
+- [x] Update the compatibility document only with reproduced facts: packet-ID known answer, fixed-TTL transcript, signature-compatible uncompressed relay, fragment metadata vector, and continued block on compressed signed relay/fanout parity/outer-fragment relay.
 
-- [ ] Record concrete historical promotions:
+- [x] Record concrete historical promotions:
 
 ```text
 PacketIdUtil field order                 SALVAGE_ALGORITHM
@@ -1040,11 +1042,11 @@ RoutePlanner general graph routing       REFERENCE_ONLY
 cancellation propagation regression      SALVAGE_TEST
 ```
 
-- [ ] Mark tasks 4.1–4.5 complete only after their tests execute. Update the design/plan status with actual evidence and explicitly state that Phase 5 did not start.
+- [x] Mark tasks 4.1–4.5 complete only after their tests execute. Update the design/plan status with actual evidence and explicitly state that Phase 5 did not start.
 
-- [ ] Run `rtk git diff --check` and a placeholder scan over the modified docs. Fix every stale module path, contradictory count, and unsupported parity claim.
+- [x] Run `rtk git diff --check` and a placeholder scan over the modified docs. Fix every stale module path, contradictory count, and unsupported parity claim.
 
-- [ ] Commit documentation separately.
+- [x] Commit documentation separately.
 
 ```bash
 rtk git add AGENTS.md docs tools/upstream-compat/README.md

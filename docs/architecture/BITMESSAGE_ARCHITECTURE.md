@@ -1,7 +1,7 @@
 # BitMessage Architecture
 
-Status: proposed architecture, not an implementation  
-Audit date: 2026-08-07  
+Status: architecture implemented through the Phase 4 deterministic mesh foundation
+Audit date: 2026-08-11
 Confidence: high for the local repository and pinned upstream snapshots; moderate where the two upstream clients disagree or work exists only in an open pull request.
 
 ## 1. Decision
@@ -31,27 +31,35 @@ BitMessage does not make these common-core responsibilities:
 
 ## 3. Current repository assessment
 
-The current repository is a clean shell, not a partially implemented messenger.
+The current repository is an early implementation through the deterministic mesh foundation, not yet a complete messenger.
 
 ```text
 androidApp -> sharedUI -> sharedLogic -> feature:root
                          sharedLogic -> core:common
                          feature:root -> core:common
 iosApp ----------------> sharedLogic -> feature:root
+
+core:model ------------> core:foundation
+protocol:bitchat ------> core:foundation, core:model
+transport:api ---------> core:foundation, core:model
+engine:mesh -----------> core:foundation, core:model, protocol:bitchat, transport:api
 ```
 
 `sharedUI` is currently Android-only. `sharedLogic`, `feature:root`, and `core:common` target Android, iOS ARM64, and iOS Simulator ARM64. The iOS application is native SwiftUI and imports `SharedLogic`.
 
-### Implemented Phase 2 core
+### Implemented deterministic core, codec, and mesh boundary
 
-Phase 2 added the following narrow core boundaries. They are not yet consumed by an application or protocol module:
+Phases 2–4 added the following narrow inward-pointing boundaries. They are not yet composed into either application shell:
 
 ```text
 :core:model   -> :core:foundation
 :core:testing -> :core:foundation
+:protocol:bitchat -> :core:foundation, :core:model
+:transport:api -> :core:foundation, :core:model
+:engine:mesh -> :core:foundation, :core:model, :protocol:bitchat, :transport:api
 ```
 
-`:core:testing` is test infrastructure only. No production module depends on it. `:core:foundation` and `:core:model` have executed Android-host and iOS Simulator KMP tests; this does not establish a native Swift source-test surface.
+`:core:testing` is test infrastructure only. No production module depends on it. `LinkId` remains owned by `:core:model`; `:transport:api` contains no BitChat protocol type. `:engine:mesh` is common Kotlin and owns a pure reducer plus a separate serialized runtime. These modules have executed Android-host and iOS Simulator KMP tests; this does not establish a native Swift source-test surface or physical-link interoperability.
 
 ### Existing-code disposition
 
@@ -67,7 +75,7 @@ Phase 2 added the following narrow core boundaries. They are not yet consumed by
 | Permissions, dispatchers, logging, JSON config, hex, geohash helpers | ADAPT | Reuse when contracts fit; do not let utility types become domain owners. |
 | Protocol models/codecs | ADAPT | Phase 3 provides the narrow pure `:protocol:bitchat` codec from executable Phase 1 literals only; runtime policy, crypto, and product integration remain absent. |
 | BLE, Noise, routing, persistence | DELETE as a category | None exist in this repository. There is no legacy implementation to preserve. |
-| Tests | ADAPT | Phase 1 compatibility, Phase 2 foundation/model/testing, and Phase 3 protocol suites execute real tests; other pre-existing behavior modules may still be `NO-SOURCE`. Add real tests before behavior. |
+| Tests | ADAPT | Phase 1 compatibility, Phase 2 foundation/model/testing, Phase 3 protocol, and Phase 4 transport/mesh suites execute real tests; other pre-existing behavior modules may still be `NO-SOURCE`. Add real tests before behavior. |
 | BlueFalcon integration | DELETE as a category | Catalog availability is not integration. Introduce only behind the link adapter. |
 
 ### Historical donor repository
@@ -144,11 +152,11 @@ Use `@JvmInline value class` for validated semantic identifiers where it materia
 
 | Module | Contract |
 |---|---|
-| `:engine:mesh` | Peer/link/topology state, packet admission, dedup, TTL, relay, fragment assembly, dispatch. Allowed: core, BitChat protocol, transport API, crypto API. Forbidden: BlueFalcon/platform/UI/database driver. API: `MeshEngine`, state/event/effect types. Tests: transitions, traces, properties, simulator scenarios. Source sets: commonMain/commonTest. |
+| `:engine:mesh` | Implemented bounded packet admission, authoritative dedup, TTL, deterministic relay/source-route decisions, fragment assembly/reinjection, redacted trace, and explicit serialized runtime. Allowed: `:core:foundation`, `:core:model`, `:protocol:bitchat`, and `:transport:api`; `:core:testing` only in test scope. Forbidden: crypto implementation, BlueFalcon/platform/UI/database/domain/simulator dependencies. API: `MeshEngine`, `MeshState`, `MeshEvent`, `MeshEffect`, `MeshLimits`, `MeshRuntime`, `MeshEffectExecutor`. Tests: transition, property/adversarial, lifecycle, pressure, and Android-host coverage-gate tests. Source sets: commonMain/commonTest/androidHostTest. |
 | `:engine:delivery` | Durable send attempts, route selection requests, retry/fallback/receipt policy. Allowed: domain, core, transport/crypto ports. Forbidden: database/BlueFalcon/UI. API: `DeliveryEngine`. Tests: restart and monotonic status traces. Source sets: commonMain/commonTest. |
 | `:engine:sync` | GCS reconciliation, history windows, requested response budgets, courier/store-and-forward decisions. Allowed: core, protocol, domain identifiers. Forbidden: sockets/UI. API: `SyncEngine`. Tests: partition/heal, bounded response, courier traces. Source sets: commonMain/commonTest. |
 | `:engine:media` | Transfer admission, manifests/chunks, verification, resume and quotas. Allowed: core/domain. Forbidden: file system, audio frameworks, BLE implementation. API: `MediaTransferEngine`. Tests: loss/reorder/corruption/restart. Source sets: commonMain/commonTest. |
-| `:transport:api` | `LinkEvent`, `LinkCommand`, link capabilities/results, internet transport event/command contracts. Allowed: core. Forbidden: protocol/domain decisions. Tests: contract laws. Source sets: commonMain/commonTest. |
+| `:transport:api` | Implemented transport-neutral `LinkEvent`, `LinkCommand`, `LinkCapabilities`, and `LinkResult` contracts. `LinkId` is imported from `:core:model`; no protocol type crosses this module. Allowed: `:core:foundation`, `:core:model`. Forbidden: BitChat/domain/platform/coroutine-runtime decisions. Tests: construction, defensive ownership, and correlation laws. Source sets: commonMain/commonTest. |
 | `:transport:bluetooth` | BlueFalcon 3.7.0 adapter and platform lifecycle glue. Allowed: transport API, BlueFalcon, core. Forbidden: messenger/codec/routing decisions. API: `BluetoothLinkAdapter`, explicit `start/stop/close`. Tests: fake backend contract plus Android/Apple integration tests. Source sets: commonMain only for adapter-neutral mapping, androidMain, iosMain. |
 | `:transport:simulation` | Multi-node simulated link network with loss, duplication, reordering, corruption, partitions, MTU and backpressure. Allowed: transport API/core testing. Forbidden: platform BLE. API: `SimulatedNetwork`. Tests: deterministic replay. Source sets: commonMain/commonTest. |
 | `:transport:nostr` | Relay connections, subscription lifecycle, reconnect and proxy boundary. Allowed: transport API, protocol Nostr, Ktor. Forbidden: messenger/UI policy. API: Nostr commands/events. Tests: scripted websocket and reconnect tests. Source sets: commonMain/androidMain/iosMain as required. |
@@ -182,7 +190,7 @@ These rules should first be enforced through module dependencies and tests. Add 
 
 ## 7. Deterministic engine architecture
 
-Phase 2 implements only the generic reducer kernel below. It has no production or product engine, effect executor, production scheduler or entropy provider, middleware, registry, runtime coordinator, persistence, or composition mechanism. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` remain in `:core:testing`:
+Phase 2 introduced the generic reducer kernel below. Phase 4 now implements its first production use, `MeshEngine`, plus the separate `MeshRuntime` imperative shell. There is still no production entropy provider, physical transport, cryptographic implementation, persistence, or application composition for the mesh path. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` remain in `:core:testing`:
 
 ```kotlin
 fun reduce(state: State, event: Event): Transition<State, Effect>
@@ -190,7 +198,7 @@ fun reduce(state: State, event: Event): Transition<State, Effect>
 
 `Transition` preserves ordered effects and typed `TraceRecord` values with defensive list ownership. `TraceRecord` permits only a validated transition name, optional `CorrelationId`, closed decision/size kinds, and nonnegative counts; its schema has no raw payload or free-form diagnostic field. Callers must provide only non-secret names and correlation IDs because those identifier strings are not sanitized by the generic type.
 
-The concrete engines and runtime described below are future architecture. A future runtime may serialize events, persist requested transitions, execute effects, and feed typed results back as events. Time, entropy, key operations, storage, and transport are future concrete effects. Detailed contracts and traces are in `STATE_MACHINE_DESIGN.md`.
+`MeshEngine.reduce` commits immutable `MeshState` and emits ordered `MeshEffect` and redacted trace records. Decode, SHA-256, signature verification, entropy, timers, relay encoding, link writes, and public-payload publication are effect boundaries; their correlated `MeshEvent` results carry `Generation` and explicit `MonotonicTime`. `MeshRuntime` creates no jobs or channels in its constructor, then on `start` creates one reducer actor, one ordered effect worker, bounded event/effect/trace channels, and correlated timer jobs. `trySubmit` reports `Accepted`, `Backpressured`, or `Closed`; stop retains only unexpired admitted packet IDs, later start increments generation, and close is permanent. Detailed contracts, bounds, TTL, relay, fragment, and lifecycle behavior are in `STATE_MACHINE_DESIGN.md`.
 
 There is no giant application reducer:
 
@@ -205,18 +213,18 @@ There is no giant application reducer:
 
 The audited `3.7.0` tag and `master` are the same commit (`0338bb6b4ef6653179c5363946986ee838cd3c6f`). Use the engine-based central API and the separate peripheral artifact; do not use deprecated facade APIs.
 
-The adapter maps BlueFalcon callbacks/results to:
+The future adapter must collapse BlueFalcon discovery/connection/service/restoration callbacks into the implemented narrow link boundary before anything reaches `:engine:mesh`:
 
 ```text
-LinkEvent: AdapterStateChanged, Discovered, Connected, Disconnected,
-           ServicesResolved, PayloadReceived, ReadyToWrite, Restored
+LinkEvent: Opened, ReadinessChanged, PayloadReceived, Closed
 
-LinkCommand: StartScan, StopScan, Connect, Disconnect, Write,
-             StartPeripheral, StopPeripheral, Notify, RespondToGattRequest
+LinkCommand: Write, Close
 
-LinkResult: Sent, Backpressured, PayloadTooLarge, Disconnected,
+LinkResult: Written, Backpressured, PayloadTooLarge, Disconnected,
             Unsupported, Failed
 ```
+
+Scanning, discovery, connection establishment, service resolution, restoration, central/peripheral role, and GATT request handling remain adapter lifecycle concerns. They are not mesh commands or events.
 
 No BlueFalcon type crosses `:transport:bluetooth`. The runtime owns `BlueFalcon` and `BlueFalconPeripheral` instances and calls `start`, `stop`, and `close` explicitly.
 

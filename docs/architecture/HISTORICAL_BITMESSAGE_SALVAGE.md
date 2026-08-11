@@ -118,6 +118,20 @@ The most important negative finding is categorical: the historical repository co
 | Domain/models | Large protocol-neutral domain attempt plus duplicate wire models | App/service/view models intertwined with client | View-model/store models tailored to Apple product | Salvage conversation/status/retention/use-case semantics; recreate coarse domain and stable IDs. |
 | Presentation/DI | Shared Compose for Android/iOS, Decompose, MVIKotlin, very broad Metro graph | Compose UI | Native SwiftUI | Android Compose and Apple SwiftUI; use current small Metro/Decompose foundation, not donor graph or shared iOS Compose. |
 
+### 3.5 Phase 4 promotions
+
+Phase 4 promoted only narrow algorithm shapes and regression scenarios. Current pinned Apple/Android evidence and the new reducer ownership model remain authoritative.
+
+| Historical input | Phase 4 classification | Concrete disposition |
+|---|---|---|
+| `PacketIdUtil` field order | `SALVAGE_ALGORITHM` | Rewritten as protocol-owned `PacketIdentity.input`; the current-client known answer independently proves `type -> sender -> timestamp BE -> payload`, SHA-256, and 16-byte truncation. |
+| Invalid-auth dedup-poison finding | `SALVAGE_TEST` | `AdmissionReducerTest` proves failed verification never inserts or evicts `admittedPackets`, never dispatches, and never relays; repeated forgeries remain bounded in pending state. |
+| Scheduled duplicate relay cancellation | `SALVAGE_TEST` | `RelayPolicyTest` proves only an already-authenticated duplicate cancels a matching pending relay timer. |
+| `FragmentManager` quota/reorder structure | `SALVAGE_ALGORITHM` | Rewritten as immutable bounded `FragmentStream` state with pre-growth quotas, ascending-index assembly, identical-duplicate suppression, and conflict destruction. No donor scope, lock, timer, or delegate was ported. |
+| `RelayController` numeric policy | `REFERENCE_ONLY` | The donor values do not define compatibility. Phase 4 uses a named conservative TTL/fanout policy and records Apple/Android fanout parity as unresolved. |
+| `RoutePlanner` general graph routing | `REFERENCE_ONLY` | Not ported. Phase 4 uses only an unambiguous directly observed next-hop binding, then deterministic bounded fallback. |
+| Cancellation propagation regression | `SALVAGE_TEST` | `MeshRuntimeTest` proves `CancellationException` is rethrown while ordinary effect failures become typed redacted events. |
+
 ## 4. Historical KMP boundary audit
 
 | Historical common Kotlin boundary | Was sharing correct? | Keep the boundary? | Required correction |
@@ -252,10 +266,10 @@ No executable test source is omitted from the four inventory sections above. The
 | Plain v1 broadcast/private and v2 routed packet semantics | **Promoted after current validation** | Both pinned clients independently emitted the deterministic unpadded cases and the opposite decoder accepted them. The neutral corpus uses current bytes; historical bytes were not copied. |
 | Historical compressed packet literals | Rejected as neutral fixtures | They were captured from the historical Kompress encoder. Replace with pinned Apple-produced, Android-produced and handcrafted foreign raw-DEFLATE fixtures. |
 | Announce absent/empty/unknown capability TLVs | Candidate | Both pinned decoders preserve required semantics; current emit bytes recorded separately per client. |
-| Packet-ID known answer | Candidate | Both pinned implementations or a jointly accepted specification produce the same 16 bytes. |
+| Packet-ID known answer | **Promoted for Phase 4 after current validation** | Both pinned implementations produced `25429fbd15e2051049307f8e650ae863` from the recorded canonical input; it lives in protocol tests and the pinned harness, not the Phase 1 corpus. |
 | Noise XX fixed transcript/hash | **Rejected from Phase 1 neutral fixtures** | The historical 48-byte constant conflicts with its 64-byte transcript and no pinned dual-upstream deterministic KAT resolved the discrepancy. Both shapes remain blocked metadata only. |
 | Ed25519/SHA/Base64 KATs | Candidate | Verify with independent standard implementation and each selected platform provider. |
-| Fragment packet/reassembly bytes | Candidate | Both pinned decoders accept; bounds and route/RSR propagation checked independently. |
+| Fragment packet/reassembly bytes | **Partially promoted for Phase 4 after current validation** | Both pinned implementations reproduced the 13-byte metadata vector and ascending-index local reassembly. Outer-fragment relay, RSR propagation, and broader fragment interoperability remain blocked. |
 | Request-sync/GCS literals | **Rejected from Phase 1 neutral fixtures** | Signed `Long` versus `UInt64` hash-to-range behavior remains unresolved. A high-bit case is retained as blocked metadata, not expected shipping behavior. |
 | `bitchat1:` embedded PM/ACK/read receipt | Candidate | Both pinned clients decode; apply current packet/Noise limits and recipient rules. |
 | Historical `v2:` XChaCha ciphertext | Candidate with naming caveat | Pinned deployed BitChat profile decrypts it; never cite it as generic NIP-44 conformance without a standards comparison. |

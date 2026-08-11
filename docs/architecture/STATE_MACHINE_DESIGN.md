@@ -1,11 +1,11 @@
 # Deterministic State-Machine Design
 
-Status: Phase 2 generic kernel implemented; remaining concrete-engine design is future work
-Scope: Phase 2 reducer/trace contracts plus future common protocol/runtime decisions; platform adapters remain future effect executors.
+Status: Phase 2 generic kernel and Phase 4 deterministic mesh reducer/runtime implemented; other engines remain future work
+Scope: implemented foundation and mesh contracts plus future delivery/Noise/sync/media decisions; physical and platform adapters remain future effect executors.
 
 ## 1. Reducer contract
 
-Phase 2 implements this generic reducer contract only:
+Phase 2 implements this generic reducer contract:
 
 ```kotlin
 interface Engine<S : Any, E : Any, F : Any> {
@@ -21,15 +21,15 @@ class Transition<S : Any, F : Any>(
 
 `Transition` keeps private snapshots of its ordered effect and trace lists and returns fresh list views. `TraceRecord` contains only a validated transition name, optional `CorrelationId`, a closed `TraceDecision`, and closed `TraceSizeKind` facts with nonnegative counts. Its schema excludes byte/payload and free-form diagnostic fields. Callers must supply only non-secret transition names and correlation IDs; this generic type does not sanitize those identifier strings.
 
-There is no Phase 2 production or product `Engine` implementation, public concrete effect type, executor, middleware, registry, plugin, composition root, persistence mechanism, coroutine runtime, production scheduler, or production entropy provider. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` are separate deterministic infrastructure. Given identical initial state and ordered events, a future engine implementation must produce identical state, effects and trace records; the generic kernel itself performs no I/O, clock/randomness read, or service lookup.
+Phase 4 implements `Engine<MeshState, MeshEvent, MeshEffect>` as the first concrete reducer and `MeshRuntime` as its separate imperative shell. The reducer performs no I/O, clock/randomness read, coroutine launch, platform call, persistence, or service lookup. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` remain separate deterministic infrastructure; production entropy and physical transport providers do not yet exist.
 
-The following state ownership and runtime material is the normative design for later concrete engines. It is not implemented by Phase 2.
+The mesh material below records implemented Phase 4 behavior. Other engine and persistence material remains normative future design.
 
 ## 2. State ownership
 
 | State | Sole mutable owner | Durable authority |
 |---|---|---|
-| Link availability, peer/link bindings, topology, dedup, fragments | `MeshEngine` actor | Snapshot/journal only where recovery is required; public history in repository |
+| Link availability, peer/link bindings, topology, dedup, fragments | `MeshRuntime` actor invoking pure `MeshEngine` | None in Phase 4; in-memory only |
 | Handshake/session generation, transcript, authenticated peer evidence | `NoiseSessionEngine` actor | Opaque key/session records and identity repository according to protocol policy |
 | Logical send and attempt policy | `DeliveryEngine` actor | Message/outbox/attempt repositories |
 | GCS windows, sync peer budget, courier envelope decisions | `SyncEngine` actor | History/courier repositories |
@@ -42,33 +42,37 @@ One state has one writer. Other engines receive facts as events or issue effects
 
 The runtime owns actors, scopes and ordering. An engine actor may own a mailbox and child scope only with explicit `start`, `stop`, `close`, restart and error policies. There are no launches in object initialization. Cancellation is never swallowed by broad exception handling.
 
-## 3. Future runtime event loop
+## 3. Implemented mesh runtime event loop
 
 ```text
-external callback / timer / recovery row
-        |
-        v
-typed event -> bounded serialized mailbox -> reducer
-                                           | state committed in memory
-                                           v
-                                    ordered effects
-                                           |
-                  +------------------------+-----------------------+
-                  |                        |                       |
-             persistence              crypto/provider         transport
-                  |                        |                       |
-                  +---------- typed result event ----------------+
+external LinkEvent / correlated effect result
+                     |
+                     v
+       bounded event mailbox (256 default)
+                     |
+                     v
+       one actor -> MeshEngine.reduce
+                     | publish MeshState and trace first
+                     v
+       bounded ordered effect queue (256 default)
+                     |
+                     v
+           one MeshEffectExecutor worker
+                     |
+                     +---- correlated MeshEvent ----> actor result channel
+
+Schedule/Cancel effects -> runtime-owned timer jobs -> TimerElapsed -> actor
 ```
 
 Rules:
 
 1. Each engine mailbox is bounded. Overflow has a typed policy; it never silently drops protocol input.
-2. One transition is reduced atomically. Effects retain reducer order, although independent executors may run concurrently only when explicitly marked parallel-safe.
-3. A state change that represents a durable fact is not externally acknowledged until its persistence effect succeeds.
-4. At-least-once effect execution is assumed across process death. Commands therefore carry stable IDs and executors/repositories are idempotent.
-5. Adapter callbacks are normalized and enqueued; they never call one another recursively through the engine.
-6. Cross-engine communication passes through a coordinator as typed events with causal/correlation IDs.
-7. Trace records contain IDs, transition names, sizes and reasons, never plaintext or key material.
+2. One transition is reduced atomically. State and trace are published before its effects are enqueued; the single worker preserves effect order, and its rendezvous result channel has selection priority over new external input.
+3. Phase 4 is in-memory and makes no process-death or persistence claim. Correlation IDs and generations make late/duplicate results deterministic; durable at-least-once execution belongs to later delivery/persistence phases.
+4. Adapter callbacks are normalized and enqueued; fragment completion emits an explicit decode effect and never re-enters the reducer recursively.
+5. Start creates the channels/jobs; stop disables acceptance before one `RuntimeStopping` transition and non-cancellable teardown; a later start increments generation; close is permanent.
+6. The trace channel is bounded and non-blocking. Overflow increments an observable saturating dropped-trace count rather than changing state or blocking progress.
+7. Trace records contain transition names, correlations, decisions, and sizes, never plaintext, packet bodies, signing material, signatures, or keys.
 
 ## 4. Time, scheduling and entropy contracts
 
@@ -92,9 +96,11 @@ Phase 2 defines only `EntropyRequest(correlationId, byteCount)`, `EntropyGenerat
 
 No future production security decision uses Kotlin `Random`. A future simulator keeps fault scheduling separate from protocol entropy.
 
-## 5. Future effects and persistence
+## 5. Implemented mesh effects and future persistence
 
-The representative effects and persistence mechanisms below are future architecture, not Phase 2 implementation.
+Phase 4 `MeshEffect` categories are `DecodePacket`, `ComputePacketDigest`, `VerifySignature`, `DecodeFragmentPayload`, `EncodeRelay`, `RequestEntropy`, `Schedule`, `Cancel`, `WriteLink`, `CloseLink`, and `PublishPublicPayload`. `MeshEffectExecutor` executes non-timer effects and returns at most one correlated `MeshEvent`; cancellation is rethrown and ordinary executor exceptions become redacted `EffectFailed(EFFECT_EXECUTION_FAILED)` events. `MeshRuntime` owns `Schedule`/`Cancel` timer jobs and routes timer results through the same serialized actor.
+
+The representative persistence and cross-engine effects below remain future architecture, not Phase 4 implementation.
 
 Representative effects:
 
@@ -126,23 +132,37 @@ An executor claims the outbox operation with a lease. Crash recovery reclaims ex
 
 Owns:
 
-- link/peer bindings and authenticated/provisional status;
-- packet admission, packet IDs, dedup and replay windows;
-- TTL and relay/fanout/source-route decisions;
-- fragment streams, bounds and expiry;
-- topology observations and dispatch to Noise, delivery, sync or media.
+- active links and expiring provisional `WirePeerId`/`LinkId` observations;
+- staged packet admission, protocol-owned packet IDs, authenticated dedup and replay expiry;
+- local public-payload publication, TTL, bounded relay/fanout, and direct source-route decisions;
+- fragment stream/decode state, quotas, expiry, assembly, and explicit reinjection;
+- bounded route observations and correlated pending entropy/encode/write state.
 
 Does not own conversations, outbox retry, Noise primitives, GCS history storage, BlueFalcon or UI.
 
-Core shape:
+Implemented core shape:
 
 ```text
-MeshState(peers, links, seenPackets, fragments, topology, relayBudget)
-MeshEvent(LinkUp, LinkDown, BytesReceived, PacketDecoded, SignatureChecked,
-          TimerFired, SendRequested, EffectFailed)
-MeshEffect(Decode, Verify, WriteLink, Schedule, PersistHistory,
-           DispatchNoise/Sync/Delivery/Media)
+MeshState(generation, lifecycle, links, provisionalBindings,
+          pendingAdmissions, admittedPackets, pendingFragmentDecodes,
+          fragmentStreams, routeObservations, scheduledRelays,
+          pendingRelayEntropy, pendingRelayEncodes, pendingLinkWrites,
+          expiryTimers, byteTotals, nextCorrelationSequence)
+MeshEvent(LinkObserved, PacketDecoded, PacketDigestComputed, SignatureVerified,
+          FragmentPayloadDecoded, RelayEncoded, EntropyProvided, TimerElapsed,
+          LinkCompleted, EffectFailed, RuntimeStarted, RuntimeStopping)
+MeshEffect(DecodePacket, ComputePacketDigest, VerifySignature,
+           DecodeFragmentPayload, EncodeRelay, RequestEntropy,
+           Schedule, Cancel, WriteLink, CloseLink, PublishPublicPayload)
 ```
+
+Admission is `LinkEvent.PayloadReceived -> DecodePacket -> PendingAdmission(AwaitingDigest) -> ComputePacketDigest -> PendingAdmission(AwaitingSignature)` when required -> `VerifySignature` -> atomic insertion into `admittedPackets` -> publication and/or relay. Invalid authentication removes only pending state and emits no publication or relay effect; it cannot consume or evict authoritative dedup capacity.
+
+Default limits are 32 links; 256 provisional observations (8/link); 256 pending admissions (8/link), 128 KiB each and 4 MiB aggregate with 15-second expiry; 10,000 admitted packet IDs with 5-minute expiry; 64 fragment streams (4/source), 256 fragments/stream, 128 KiB/stream and 4 MiB aggregate with 30-second expiry; 512 route observations (16/source) with 3-minute expiry; 512 scheduled relays (8/source), fanout 8; and 256-slot event, effect, and trace buffers. Capacity is checked before growth; live admitted IDs are never evicted to admit new data.
+
+Local publication is independent of relay TTL. Received TTL 0 or 1 is not relayed; otherwise outgoing TTL is `min(received, 7) - 1`. Relay targets exclude ingress, closed/not-ready links, and links whose maximum write size is too small. A unique source-route next-hop binding wins; otherwise eligible links are ordered by `LinkId.value` and capped by `maxRelayFanout`. Two supplied entropy bytes map to a deterministic `0..500 ms` delay. This fallback is intentionally conservative and is not a claim of exact Apple/Android fanout parity.
+
+Fragment payload metadata is decoded by `:protocol:bitchat`. Identical duplicate fragments are ignored without extending expiry. Metadata or byte conflicts destroy the stream. Completion assembles ascending indexes, removes the stream, and emits `DecodePacket` with `PacketSource.Reassembled`; the result traverses the normal admission/authentication path without recursive reducer entry. Outer-fragment relay remains profile-blocked.
 
 ### NoiseSessionEngine
 

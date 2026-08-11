@@ -1,6 +1,6 @@
 # Phase 4 Deterministic MeshEngine Design
 
-Status: approved in conversation; proposed for written-spec review
+Status: approved and implemented through tasks 4.1–4.5; final verification pending
 
 ## Goal
 
@@ -241,6 +241,8 @@ Phase 4 injects signature verification as an effect handler contract. It does no
 | Active links | 32 |
 | Provisional peer observations | 256 global, 8 per link |
 | Pending admissions | 256 global, 8 per link |
+| Bytes per pending packet | 128 KiB |
+| Aggregate pending bytes | 4 MiB |
 | Pending authentication lifetime | 15 seconds |
 | Admitted packet IDs | 10,000 global |
 | Deduplication lifetime | 5 minutes |
@@ -252,8 +254,10 @@ Phase 4 injects signature verification as an effect handler contract. It does no
 | Route observations | 512 global, 16 per provisional source |
 | Route observation lifetime | 3 minutes |
 | Scheduled relays | 512 global, 8 per provisional source |
+| Relay fanout | 8 links |
 | Runtime event mailbox | 256 |
 | Runtime effect queue | 256 |
+| Runtime trace buffer | 256 |
 
 All counts and byte limits are checked before state growth or proportional allocation. Constructors reject negative, zero where unusable, internally inconsistent, or overflow-prone values. Tests use smaller limits to prove every boundary and recovery path.
 
@@ -298,7 +302,7 @@ Before retaining bytes, the reducer validates:
 
 An identical duplicate fragment is ignored. Reusing an index with different bytes, or changing fixed metadata for an existing stream, rejects and removes the conflicting stream so mixed content cannot be assembled.
 
-When all indexes are present, assembly occurs in ascending index order, the stream is removed in the same transition, and the engine emits an explicit `DecodeReassembledPacket` effect. The decoded inner packet returns as a normal result event and re-enters the complete admission pipeline, including packet identity, required authentication, profile checks, authoritative deduplication, dispatch, and relay.
+When all indexes are present, assembly occurs in ascending index order, the stream is removed in the same transition, and the engine emits an explicit `DecodePacket` effect with `PacketSource.Reassembled`. The decoded inner packet returns as a normal `PacketDecoded` event and re-enters the complete admission pipeline, including packet identity, required authentication, profile checks, authoritative deduplication, dispatch, and relay.
 
 Reassembly never calls the reducer recursively and never bypasses authentication. Completed outer fragment state is not treated as admitted inner-packet identity.
 
@@ -428,3 +432,11 @@ Phase 4 is complete when:
 - no Phase 5+ production scaffolding is introduced.
 
 If the required pinned evidence cannot be established, the corresponding path remains explicitly profile-blocked and Phase 4 is reported as incomplete rather than guessed into completion.
+
+## Implementation record
+
+Tasks 4.1–4.5 were implemented on `codex/phase-4-deterministic-mesh-engine` from accepted Phase 3 base `6989e092c2eb8e90d267b77659960b4d8eb4fc86`. The two new modules match the approved dependency graph. Protocol refinements are limited to packet identity, signing transcript, TTL-only uncompressed relay encoding, fragment values/codec, and named profile classifications. `compatibility/` was not changed.
+
+The reducer/property suite executes the admission, invalid-auth poisoning, duplicate, TTL, stale-result, relay, fragment, quota, and deterministic replay laws. `MeshPropertyTest` records and replays 100 seeds of 250 hostile events, while `MeshEngineCoverageTest` supplies the non-zero production gate. `MeshRuntimeTest` covers constructor inertness, double start, typed mailbox pressure, serialized transitions, ordered effects, timer cancellation, bounded trace loss, stop/restart retention, stale generations, permanent close, and cancellation propagation.
+
+The intentionally unresolved Phase 4 questions are compressed/padded signed relay, exact Apple/Android fallback fanout parity, and outer-fragment relay. Those paths remain blocked. No `:transport:simulation` or other Phase 5+ production module was created.

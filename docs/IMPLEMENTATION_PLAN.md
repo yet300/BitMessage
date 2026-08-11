@@ -1,6 +1,6 @@
 # BitMessage Implementation Plan
 
-Status: executable roadmap; Phases 0, 0.4, 1, 2, and the evidence-first Phase 3 slice are complete; Phase 4 not started
+Status: executable roadmap; Phases 0, 0.4, 1, 2, the evidence-first Phase 3 slice, and Phase 4 are complete; Phase 5 has not started
 Baseline date: 2026-08-07  
 Rule: every task leaves the repository buildable, tested and reviewable. No big-bang migration.
 
@@ -255,6 +255,8 @@ Only the items in this table are approved historical inputs. “Fixture candidat
 | 4.3 | Relay selection/jitter/source-route decisions under compatibility profile. | 4.2 | engine:mesh | pinned topology traces | Deterministic with supplied entropy result. |
 | 4.4 | Bounded fragment reassembly and expiry. | 4.2 | engine:mesh | reorder/duplicate/conflict/quota tests | Global/per-peer memory limits asserted. |
 | 4.5 | Typed dispatch and runtime actor lifecycle. | 4.1–4.4 | engine runtime composition | start/stop/restart/cancellation tests | No post-close events or constructor launches. |
+
+Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded link contracts. `:engine:mesh` contains the pure reducer, immutable bounded state, profile-grounded packet identity/admission/TTL/relay/fragment policy, generated hostile-sequence tests, a non-zero `meshEngineCheck`, and an explicit `MeshRuntime` with bounded channels and permanent close. The Phase 1 corpus is unchanged. Compressed signed relay, exact cross-client fallback fanout parity, and outer-fragment relay remain explicitly blocked; no physical transport or Phase 5 simulator was added.
 
 ## 8. Phase 5 — Deterministic simulator
 
@@ -645,7 +647,7 @@ A task is complete only when:
 
 ## 24. Completed work and next task
 
-The completed Phase 1, Phase 2, and evidence-first Phase 3 sequence is:
+The completed Phase 1–4 sequence is:
 
 1. **1.1 — Fixture schema and provenance: complete.**
 2. **1.2 — Dual-upstream minimal literal packet/announce fixtures: complete.**
@@ -655,6 +657,11 @@ The completed Phase 1, Phase 2, and evidence-first Phase 3 sequence is:
 6. **2.2 — Validated IDs and bounded bytes: complete.**
 7. **2.3 — Time, scheduler, entropy contracts and virtual runtime: complete.**
 8. **2.4 — Generic reducer/transition and typed redacted trace kernel: complete.**
-9. **3.1–3.9 — Evidence-first BitChat wire codec: complete.** The implementation executes only 23 resolved fixture outcomes, records every other fixture as metadata-only, blocked, later-phase, or evidence-layout conflict, and starts no Phase 4 engine code.
+9. **3.1–3.9 — Evidence-first BitChat wire codec: complete.** Its original Phase 3 scope executes only 23 resolved fixture outcomes and records every other fixture as metadata-only, blocked, later-phase, or evidence-layout conflict; it contains no mesh runtime policy.
+10. **4.1 — Link and mesh contracts: complete.** `LinkId` remains in `:core:model`; `:transport:api` contains no BitChat types.
+11. **4.2 — Admission, packet identity, dedup, and TTL: complete.** Authentication precedes authoritative dedup; all attacker-influenced state is bounded and expiring.
+12. **4.3 — Relay, jitter, and source-route policy: complete.** Entropy and timers are explicit effects; fallback fanout is deterministic and compatibility uncertainty is isolated.
+13. **4.4 — Fragment reassembly: complete.** Stream/count/byte quotas, expiry, duplicate/conflict semantics, and explicit full-pipeline reinjection are tested.
+14. **4.5 — Serialized runtime lifecycle: complete.** Constructor inertness, bounded pressure, ordering, timer cancellation, stop/restart generation, permanent close, and cancellation propagation are tested.
 
-**Next task: Phase 4 is not started.** Do not infer mesh/runtime work from the Phase 3 codec; it is a pure codec and report only.
+**Next task: Phase 5 is not started.** Phase 4 provides no simulated or physical network, crypto implementation, persistence, reliable delivery, sync engine, media engine, or application composition.

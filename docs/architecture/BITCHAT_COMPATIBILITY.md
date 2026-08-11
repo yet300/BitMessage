@@ -114,7 +114,7 @@ Advertisement is a hint. Security-sensitive behavior is enabled only after a sig
 
 ## 4. Implemented compatibility profile slice
 
-`BitchatBaseline2026_08` remains defined by literal fixtures from both pinned clients. Phase 3 implements only the evidence-first slice below:
+`BitchatBaseline2026_08` remains defined by literal fixtures from both pinned clients. Phase 3 implements the evidence-first wire slice below:
 
 - v1/v2 public-message (`0x02`) outer packets, exact eight-byte sender/recipient values, v1/v2 length fields, and the literal source-route layout; payload and route bounds are 16 MiB and 32 entries before allocation;
 - exact round-trip encoding for the 10 resolved Apple/Android outer literals and the four resolved legacy/extended announcement literals;
@@ -122,7 +122,14 @@ Advertisement is a hint. Security-sensitive behavior is enabled only after a sig
 - raw packet, 64-byte signature, and received-compressed-payload retention without signing, verification, decompression, recompression, or a padding policy;
 - 23 executed fixture outcomes in the separate `:protocol:bitchat:productionCompatibilityCheck` report. Five known fixture/layout contradictions remain explicitly `EVIDENCE_LAYOUT_CONFLICT`.
 
-The implementation does not claim protocol parity. Signing transcript construction is profile-blocked because no literal transcript vector exists. Compression emission, padding, private/Noise payloads, fragments, sync, Nostr, file/media, routing policy, capability negotiation, peer rotation, and all runtime behavior remain outside Phase 3. No Phase 4 code started.
+Phase 4 added a separate pinned reproduction harness without modifying the Phase 1 corpus. Both pinned production clients reproduced these exact facts:
+
+- packet identity input is `type || sender(8) || timestamp(BE u64) || payload`; SHA-256 is `25429fbd15e2051049307f8e650ae863fc909a182e634a6b6c171b1aa51b4fda`, and the 16-byte wire packet ID is `25429fbd15e2051049307f8e650ae863`;
+- the unpadded fixed-TTL/signature-cleared core is `0202000102030405060708000000000200112233445566774142`, while the actual signed transcript is 256 bytes: that 26-byte core plus 230 bytes of `e6` deterministic block padding;
+- supported uncompressed, unpadded relay changes only TTL byte offset 2 and remains compatible with the same fixed-TTL signing transcript;
+- fragment metadata is the 13-byte prefix `00010203040506070001000202` and the reproduced complete payload vector is `00010203040506070001000202aabb`; out-of-order fragments reassemble in ascending index order.
+
+The production `:protocol:bitchat` API now owns `PacketIdentity`, `SigningTranscript`, `RelayEncoding`, and `FragmentPayloadCodec`; `:engine:mesh` consumes those APIs rather than reproducing wire layouts. This still does not establish full protocol parity. Compressed or padded signed relay remains blocked by the unmerged paired fixes, exact Apple/Android fanout parity remains unresolved, and Phase 4 does not relay outer fragment packets. Private/Noise semantics, sync, Nostr, file/media, capability negotiation, and peer rotation remain outside the Phase 4 profile.
 
 ## 5. Implementations disagree
 
@@ -292,5 +299,7 @@ These block feature emission, not baseline architecture work:
 10. Which Nostr behaviors are proprietary BitChat compatibility versus standard NIP semantics?
 11. What downgrade behavior applies to password channels while Android #735 is unresolved?
 12. Which Apple-only feature ports will land on Android, and with which capability bits/vectors?
+13. Which exact fallback fanout/selection rule is jointly compatible when no unique direct source-route next hop is available?
+14. Do pinned clients relay authenticated outer fragment packets, only locally reassembled inner packets, or both, and what signing/TTL rule applies?
 
 Until resolved, BitMessage decodes conservatively, reserves assignments, and does not emit the affected feature.
