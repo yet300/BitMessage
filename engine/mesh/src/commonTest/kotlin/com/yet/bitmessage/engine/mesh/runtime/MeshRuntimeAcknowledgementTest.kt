@@ -113,6 +113,27 @@ class MeshRuntimeAcknowledgementTest {
     }
 
     @Test
+    fun finiteImmediateChainThatSettlesBeyondBoundReturnsLimitExceeded() = runTest {
+        val executor = FiniteLoopingExecutor(
+            immediateResults = 3,
+            terminalPublications = 5,
+        )
+        val runtime = runtime(
+            engine = PublicationLoopEngine(),
+            executor = executor,
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.settled.await()
+
+        assertEquals(
+            RuntimeQuiescenceResult.LimitExceeded(2),
+            runtime.awaitImmediateQuiescence(2),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
     fun closedLifecycleTerminatesEverySuspendingRuntimeApi() = runTest {
         val runtime = runtime(executor = ImmediateExecutor())
 
@@ -276,6 +297,28 @@ class MeshRuntimeAcknowledgementTest {
                 is MeshEffect.PublishPublicPayload -> {
                     release.await()
                     opened(effect.generation)
+                }
+                else -> null
+            }
+    }
+
+    private class FiniteLoopingExecutor(
+        private val immediateResults: Int,
+        private val terminalPublications: Int,
+    ) : MeshEffectExecutor {
+        val settled = CompletableDeferred<Unit>()
+        private var processedPublications = 0
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? =
+            when (effect) {
+                is MeshEffect.PublishPublicPayload -> {
+                    processedPublications += 1
+                    if (processedPublications == terminalPublications) settled.complete(Unit)
+                    if (processedPublications <= immediateResults) {
+                        opened(effect.generation)
+                    } else {
+                        null
+                    }
                 }
                 else -> null
             }

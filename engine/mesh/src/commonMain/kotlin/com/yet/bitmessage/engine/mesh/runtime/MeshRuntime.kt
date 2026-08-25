@@ -304,13 +304,13 @@ class MeshRuntime(
                     "Processed effect count exceeded registered effect count."
                 }
                 val processedSinceLastFence = processedEffects - initialProcessedEffects
-                if (processedEffects == registeredEffects) {
-                    context.lastReportedProcessedEffects = processedEffects
-                    return@withLock RuntimeQuiescenceResult.Quiescent(processedSinceLastFence)
-                }
                 if (processedSinceLastFence > maxProcessedEffects.toLong()) {
                     context.lastReportedProcessedEffects = processedEffects
                     return@withLock RuntimeQuiescenceResult.LimitExceeded(maxProcessedEffects)
+                }
+                if (processedEffects == registeredEffects) {
+                    context.lastReportedProcessedEffects = processedEffects
+                    return@withLock RuntimeQuiescenceResult.Quiescent(processedSinceLastFence)
                 }
             }
             error("Causal fence loop terminated unexpectedly.")
