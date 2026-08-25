@@ -50,6 +50,18 @@ sealed interface SubmitResult {
     ) : SubmitResult
 }
 
+sealed interface RuntimeQuiescenceResult {
+    data class Quiescent(
+        val processedEffects: Long,
+    ) : RuntimeQuiescenceResult
+
+    data object Closed : RuntimeQuiescenceResult
+
+    data class LimitExceeded(
+        val maximumEffects: Int,
+    ) : RuntimeQuiescenceResult
+}
+
 sealed interface StartResult {
     data object Started : StartResult
 
@@ -127,6 +139,11 @@ class MeshRuntime(
                     context.supervisor.cancel()
                 }
             }
+            context.effectJob.invokeOnCompletion { failure ->
+                if (failure != null && failure !is CancellationException) {
+                    context.supervisor.cancel()
+                }
+            }
 
             try {
                 check(
@@ -153,10 +170,26 @@ class MeshRuntime(
         return try {
             if (!accepting) return SubmitResult.Closed
             val context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
-            enqueue(context, event)
+            enqueue(context, event, acknowledged = null)
         } finally {
             lifecycleMutex.unlock()
         }
+    }
+
+    suspend fun submitAndAwait(event: MeshEvent): SubmitResult {
+        if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
+        lateinit var context: RunContext
+        lateinit var acknowledged: CompletableDeferred<Unit>
+        val result = try {
+            if (!accepting) return SubmitResult.Closed
+            context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
+            acknowledged = CompletableDeferred()
+            enqueue(context, event, acknowledged)
+        } finally {
+            lifecycleMutex.unlock()
+        }
+        if (result != SubmitResult.Accepted) return result
+        return awaitExternalAcknowledgement(context, acknowledged)
     }
 
     fun trySubmit(
@@ -195,21 +228,120 @@ class MeshRuntime(
                     event = event,
                 )
             }
-            enqueue(context, meshEvent)
+            enqueue(context, meshEvent, acknowledged = null)
         } finally {
             lifecycleMutex.unlock()
+        }
+    }
+
+    suspend fun submitAndAwait(
+        event: LinkEvent,
+        observedAt: MonotonicTime,
+    ): SubmitResult {
+        if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
+        lateinit var context: RunContext
+        lateinit var acknowledged: CompletableDeferred<Unit>
+        val result = try {
+            if (!accepting) return SubmitResult.Closed
+            context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
+            val currentGeneration = requireNotNull(mutableState.value).generation
+            val meshEvent = when (event) {
+                is LinkEvent.PayloadReceived -> {
+                    if (event.bytes.size > limits.maxPendingPacketBytes) {
+                        recordStructuralDecodeRejection()
+                        return SubmitResult.StructuralDecodeRejected(DecodeError.LIMIT_EXCEEDED)
+                    }
+                    when (
+                        val decoded = MeshProtocolAdapter.decode(
+                            generation = currentGeneration,
+                            observedAt = observedAt,
+                            source = PacketSource.Link(event.linkId),
+                            bytes = event.bytes,
+                        )
+                    ) {
+                        is PacketIngress.Accepted -> decoded.event
+                        is PacketIngress.Rejected -> {
+                            recordStructuralDecodeRejection()
+                            return SubmitResult.StructuralDecodeRejected(decoded.error)
+                        }
+                    }
+                }
+                else -> MeshEvent.LinkObserved(
+                    generation = currentGeneration,
+                    observedAt = observedAt,
+                    event = event,
+                )
+            }
+            acknowledged = CompletableDeferred()
+            enqueue(context, meshEvent, acknowledged)
+        } finally {
+            lifecycleMutex.unlock()
+        }
+        if (result != SubmitResult.Accepted) return result
+        return awaitExternalAcknowledgement(context, acknowledged)
+    }
+
+    suspend fun awaitImmediateQuiescence(
+        maxProcessedEffects: Int,
+    ): RuntimeQuiescenceResult {
+        require(maxProcessedEffects > 0) { "Maximum processed effects must be positive." }
+        val context = lifecycleMutex.withLock {
+            if (!accepting) return@withLock null
+            activeRun?.takeIf { it.actorJob.isActive && it.effectJob.isActive }
+        } ?: return RuntimeQuiescenceResult.Closed
+
+        return context.fenceMutex.withLock {
+            val initialProcessedEffects = context.lastReportedProcessedEffects
+            while (true) {
+                val processedEffects = awaitEffectFence(context)
+                    ?: return@withLock RuntimeQuiescenceResult.Closed
+                val registeredEffects = awaitRegisteredEffectCount(context)
+                    ?: return@withLock RuntimeQuiescenceResult.Closed
+                check(processedEffects >= initialProcessedEffects) {
+                    "Processed effect count moved behind the causal-fence cursor."
+                }
+                check(processedEffects <= registeredEffects) {
+                    "Processed effect count exceeded registered effect count."
+                }
+                val processedSinceLastFence = processedEffects - initialProcessedEffects
+                if (processedEffects == registeredEffects) {
+                    context.lastReportedProcessedEffects = processedEffects
+                    return@withLock RuntimeQuiescenceResult.Quiescent(processedSinceLastFence)
+                }
+                if (processedSinceLastFence > maxProcessedEffects.toLong()) {
+                    context.lastReportedProcessedEffects = processedEffects
+                    return@withLock RuntimeQuiescenceResult.LimitExceeded(maxProcessedEffects)
+                }
+            }
+            error("Causal fence loop terminated unexpectedly.")
         }
     }
 
     private fun enqueue(
         context: RunContext,
         event: MeshEvent,
+        acknowledged: CompletableDeferred<Unit>?,
     ): SubmitResult {
-        val result = context.external.trySend(event)
+        val result = context.external.trySend(ExternalEnvelope(event, acknowledged))
         return when {
             result.isSuccess -> SubmitResult.Accepted
             result.isClosed -> SubmitResult.Closed
             else -> SubmitResult.Backpressured
+        }
+    }
+
+    private suspend fun awaitExternalAcknowledgement(
+        context: RunContext,
+        acknowledged: CompletableDeferred<Unit>,
+    ): SubmitResult = select {
+        acknowledged.onAwait { SubmitResult.Accepted }
+        context.actorJob.onJoin {
+            if (acknowledged.isCompleted) {
+                acknowledged.await()
+                SubmitResult.Accepted
+            } else {
+                SubmitResult.Closed
+            }
         }
     }
 
@@ -274,20 +406,62 @@ class MeshRuntime(
     }
 
     private suspend fun actorLoop(context: RunContext) {
+        var preferActorCommand = true
         while (context.scope.isActive) {
-            select<Unit> {
-                context.results.onReceive { event ->
-                    reduceAndPublish(context, event)
+            val input = if (preferActorCommand) {
+                select<ActorInput> {
+                    context.controls.onReceive { ActorInput.Command(it) }
+                    context.results.onReceive { ActorInput.Result(it) }
+                    context.external.onReceive { ActorInput.External(it) }
                 }
-                context.controls.onReceive { command ->
-                    reduceAndPublish(context, command.event)
-                    command.acknowledged.complete(Unit)
+            } else {
+                select {
+                    context.results.onReceive { ActorInput.Result(it) }
+                    context.controls.onReceive { ActorInput.Command(it) }
+                    context.external.onReceive { ActorInput.External(it) }
                 }
-                context.external.onReceive { event ->
-                    reduceAndPublish(context, event)
+            }
+            preferActorCommand = when (input) {
+                is ActorInput.Command -> {
+                    handleActorCommand(context, input.command)
+                    false
+                }
+                is ActorInput.Result -> {
+                    reduceAndPublish(context, input.event)
+                    true
+                }
+                is ActorInput.External -> {
+                    reduceAcknowledged(context, input.envelope)
+                    true
                 }
             }
         }
+    }
+
+    private suspend fun handleActorCommand(
+        context: RunContext,
+        command: ActorCommand,
+    ) {
+        when (command) {
+            is ActorCommand.Reduce -> reduceAcknowledged(
+                context,
+                ExternalEnvelope(command.event, command.acknowledged),
+            )
+            is ActorCommand.EffectCount -> command.acknowledged.complete(context.registeredEffects)
+        }
+    }
+
+    private suspend fun reduceAcknowledged(
+        context: RunContext,
+        envelope: ExternalEnvelope,
+    ) {
+        try {
+            reduceAndPublish(context, envelope.event)
+        } catch (failure: Throwable) {
+            envelope.acknowledged?.completeExceptionally(failure)
+            throw failure
+        }
+        envelope.acknowledged?.complete(Unit)
     }
 
     private suspend fun reduceControl(
@@ -296,11 +470,17 @@ class MeshRuntime(
     ): Boolean {
         if (!context.actorJob.isActive) return false
         val acknowledged = CompletableDeferred<Unit>()
-        val sent = context.controls.trySend(ActorCommand.Reduce(event, acknowledged))
-        if (sent.isFailure) return false
+        if (!sendActorCommand(context, ActorCommand.Reduce(event, acknowledged))) return false
         return select {
             acknowledged.onAwait { true }
-            context.actorJob.onJoin { false }
+            context.actorJob.onJoin {
+                if (acknowledged.isCompleted) {
+                    acknowledged.await()
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 
@@ -313,10 +493,16 @@ class MeshRuntime(
         mutableState.value = transition.state
         publishTrace(context, transition)
         transition.effects.forEach { effect ->
+            context.registeredEffects = checkedIncrement(
+                context.registeredEffects,
+                "Registered effect count",
+            )
             context.effects.send(
-                EffectEnvelope(
-                    effect = effect,
-                    observedAt = transition.state.observedAt,
+                EffectCommand.Execute(
+                    EffectEnvelope(
+                        effect = effect,
+                        observedAt = transition.state.observedAt,
+                    ),
                 ),
             )
         }
@@ -336,27 +522,84 @@ class MeshRuntime(
     }
 
     private suspend fun effectLoop(context: RunContext) {
-        for (envelope in context.effects) {
-            when (val effect = envelope.effect) {
-                is MeshEffect.Schedule -> scheduleTimer(context, envelope, effect)
-                is MeshEffect.Cancel -> cancelTimer(context, effect)
-                is MeshEffect.ReinjectPacket -> {
-                    when (
-                        val decoded = MeshProtocolAdapter.decode(
-                            generation = effect.generation,
-                            observedAt = envelope.observedAt,
-                            source = effect.source,
-                            bytes = effect.bytes,
-                        )
-                    ) {
-                        is PacketIngress.Accepted -> context.results.send(decoded.event)
-                        is PacketIngress.Rejected -> recordStructuralDecodeRejection()
+        for (command in context.effects) {
+            when (command) {
+                is EffectCommand.Execute -> {
+                    check(context.processedEffects != Long.MAX_VALUE) {
+                        "Processed effect count overflow."
                     }
+                    processEffect(context, command.envelope)
+                    context.processedEffects += 1
                 }
-                else -> executeEffect(executor, effect, envelope.observedAt)?.let { event ->
-                    context.results.send(event)
+                is EffectCommand.Fence -> {
+                    command.acknowledged.complete(context.processedEffects)
                 }
             }
+        }
+    }
+
+    private suspend fun processEffect(
+        context: RunContext,
+        envelope: EffectEnvelope,
+    ) {
+        when (val effect = envelope.effect) {
+            is MeshEffect.Schedule -> scheduleTimer(context, envelope, effect)
+            is MeshEffect.Cancel -> cancelTimer(context, effect)
+            is MeshEffect.ReinjectPacket -> {
+                when (
+                    val decoded = MeshProtocolAdapter.decode(
+                        generation = effect.generation,
+                        observedAt = envelope.observedAt,
+                        source = effect.source,
+                        bytes = effect.bytes,
+                    )
+                ) {
+                    is PacketIngress.Accepted -> context.results.send(decoded.event)
+                    is PacketIngress.Rejected -> recordStructuralDecodeRejection()
+                }
+            }
+            else -> executeEffect(executor, effect, envelope.observedAt)?.let { event ->
+                context.results.send(event)
+            }
+        }
+    }
+
+    private suspend fun awaitEffectFence(context: RunContext): Long? {
+        if (!context.effectJob.isActive) return null
+        val acknowledged = CompletableDeferred<Long>()
+        val sent = select {
+            context.effectJob.onJoin { false }
+            context.effects.onSend(EffectCommand.Fence(acknowledged)) { true }
+        }
+        if (!sent) return null
+        return select {
+            acknowledged.onAwait { it }
+            context.effectJob.onJoin {
+                if (acknowledged.isCompleted) acknowledged.await() else null
+            }
+        }
+    }
+
+    private suspend fun awaitRegisteredEffectCount(context: RunContext): Long? {
+        if (!context.actorJob.isActive) return null
+        val acknowledged = CompletableDeferred<Long>()
+        if (!sendActorCommand(context, ActorCommand.EffectCount(acknowledged))) return null
+        return select {
+            acknowledged.onAwait { it }
+            context.actorJob.onJoin {
+                if (acknowledged.isCompleted) acknowledged.await() else null
+            }
+        }
+    }
+
+    private suspend fun sendActorCommand(
+        context: RunContext,
+        command: ActorCommand,
+    ): Boolean {
+        if (!context.actorJob.isActive) return false
+        return select {
+            context.actorJob.onJoin { false }
+            context.controls.onSend(command) { true }
         }
     }
 
@@ -408,27 +651,61 @@ class MeshRuntime(
     private class RunContext(
         val supervisor: Job,
         val scope: CoroutineScope,
-        val external: Channel<MeshEvent>,
-        val effects: Channel<EffectEnvelope>,
+        val external: Channel<ExternalEnvelope>,
+        val effects: Channel<EffectCommand>,
         val results: Channel<MeshEvent>,
         val controls: Channel<ActorCommand>,
         val traces: Channel<TraceRecord>,
     ) {
         val timerMutex = Mutex()
         val timers = mutableMapOf<TimerKey, Job>()
+        val fenceMutex = Mutex()
+        var registeredEffects: Long = 0
+        var processedEffects: Long = 0
+        var lastReportedProcessedEffects: Long = 0
         lateinit var actorJob: Job
         lateinit var effectJob: Job
     }
 
     private sealed interface ActorCommand {
-        val event: MeshEvent
-        val acknowledged: CompletableDeferred<Unit>
-
         data class Reduce(
-            override val event: MeshEvent,
-            override val acknowledged: CompletableDeferred<Unit>,
+            val event: MeshEvent,
+            val acknowledged: CompletableDeferred<Unit>,
+        ) : ActorCommand
+
+        data class EffectCount(
+            val acknowledged: CompletableDeferred<Long>,
         ) : ActorCommand
     }
+
+    private sealed interface ActorInput {
+        data class Command(
+            val command: ActorCommand,
+        ) : ActorInput
+
+        data class Result(
+            val event: MeshEvent,
+        ) : ActorInput
+
+        data class External(
+            val envelope: ExternalEnvelope,
+        ) : ActorInput
+    }
+
+    private sealed interface EffectCommand {
+        data class Execute(
+            val envelope: EffectEnvelope,
+        ) : EffectCommand
+
+        data class Fence(
+            val acknowledged: CompletableDeferred<Long>,
+        ) : EffectCommand
+    }
+
+    private data class ExternalEnvelope(
+        val event: MeshEvent,
+        val acknowledged: CompletableDeferred<Unit>?,
+    )
 
     private data class EffectEnvelope(
         val effect: MeshEffect,
@@ -439,4 +716,14 @@ class MeshRuntime(
         val correlationValue: String,
         val timerId: TimerId,
     )
+
+    private companion object {
+        fun checkedIncrement(
+            value: Long,
+            label: String,
+        ): Long {
+            check(value != Long.MAX_VALUE) { "$label overflow." }
+            return value + 1
+        }
+    }
 }
