@@ -44,6 +44,7 @@ include(":protocol:bitchat")
 
 include(":transport")
 include(":transport:api")
+include(":transport:simulation")
 
 include(":engine")
 include(":engine:mesh")
