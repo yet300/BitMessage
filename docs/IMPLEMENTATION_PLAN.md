@@ -286,8 +286,8 @@ Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded
 ## 9. Phase 6 — BLE integration through BlueFalcon
 
 - **Goal:** execute link commands on Android and Apple without contaminating engines.
-- **Scope:** pin BlueFalcon 3.7.0 artifacts; central/peripheral engines; session mapping; QueuePlugin; lifecycle, permission and restoration adapters.
-- **Non-goals:** mesh policy in callbacks, delivery retry in QueuePlugin, Wi-Fi Aware, UI migration.
+- **Scope:** pin BlueFalcon 3.7.0 artifacts; central/peripheral engines; session mapping; QueuePlugin; lifecycle, permission and restoration adapters. Reference BlueFalcon PR #254 (ADR 0011) dual-role lifecycle patterns, `pendingConnections` concurrency guards, and `peripheral.requests.collect` write handling without importing its incompatible `MeshFramer` or ad-hoc routing.
+- **Non-goals:** mesh policy in callbacks, delivery retry in QueuePlugin, Wi-Fi Aware, UI migration, or adopting `blue-falcon-plugin-mesh` (which uses a non-BitChat 81-byte custom header and duplicates `MeshEngine`).
 - **Dependencies:** Phases 4–5.
 - **Modules affected:** new `:transport:bluetooth`, final platform graphs, catalog/build files.
 - **Core types/interfaces:** `BluetoothLinkAdapter`, `BluetoothRuntimeConfig`, platform factories; existing Link contracts.
@@ -296,7 +296,7 @@ Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded
 - **Tests:** fake BlueFalcon mapping, session disconnect/drain, readiness epochs, payload-too-large, lifecycle; platform smoke tests.
 - **Compatibility gate:** captured link traffic is passed unchanged to common codec; no feature emission beyond baseline.
 - **Completion criteria:** two nearby BitMessage test apps can exchange raw baseline frames; simulator suite remains identical; G6.
-- **Risks:** restoration construction too late, multiple manager instances, callback races, ATT queue confused with delivery, Bluetooth flakiness.
+- **Risks:** restoration construction too late, multiple manager instances, callback races (e.g. repeated `connect()` triggered by RSSI updates on `central.peripherals` StateFlow), ATT queue confused with delivery, Bluetooth flakiness.
 - **Rollback:** transport selected by runtime flag; simulator remains default/test path; remove adapter bindings.
 
 ### Tasks
@@ -304,7 +304,7 @@ Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded
 | ID | Goal and scope | Dependencies | Expected files/modules | Tests / green gate | Definition of Done |
 |---|---|---|---|---|---|
 | 6.1 | Add exact BlueFalcon 3.7.0 central/peripheral/queue dependencies and adapter skeleton. | 4.1 | catalog, transport:bluetooth | dependency/build checks | No deprecated facade; no types leak inward. |
-| 6.2 | Central event/command mapping and explicit lifecycle. | 6.1 | common + android/ios adapter | mapping, stop/close, stale callback tests | Typed results cover all BlueFalcon outcomes. |
+| 6.2 | Central event/command mapping and explicit lifecycle (apply PR #254 `pendingConnections` guard against RSSI-triggered connect races). | 6.1 | common + android/ios adapter | mapping, stop/close, stale callback tests | Typed results cover all BlueFalcon outcomes. |
 | 6.3 | Peripheral sessions, GATT request response and targeted notification mapping. | 6.1 | adapter platform sources | multi-central/session tests | Session ID is link ID, not peer identity. |
 | 6.4 | Bounded QueuePlugin integration and readiness epochs. | 6.2–6.3 | adapter | backpressure/fairness/disconnect tests | No protocol retry/fragment logic added. |
 | 6.5 | Android permission/lifecycle and final Metro bindings. | 6.2–6.4 | androidMain/androidApp | JVM/instrumented smoke, G0/G6 | Start/stop works across foreground cycles. |
