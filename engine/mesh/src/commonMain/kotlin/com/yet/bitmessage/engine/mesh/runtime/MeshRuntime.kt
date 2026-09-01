@@ -174,6 +174,10 @@ class MeshRuntime(
         }
     }
 
+    /**
+     * Waits until [event]'s transition, state, trace, and complete effect list have been admitted to
+     * the actor's bounded ordered ledger. Asynchronous effect execution is not part of this acknowledgement.
+     */
     suspend fun submitAndAwait(event: MeshEvent): SubmitResult {
         if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
         lateinit var context: RunContext
@@ -198,35 +202,10 @@ class MeshRuntime(
         return try {
             if (!accepting) return SubmitResult.Closed
             val context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
-            val currentGeneration = requireNotNull(mutableState.value).generation
-            val meshEvent = when (event) {
-                is LinkEvent.PayloadReceived -> {
-                    if (event.bytes.size > limits.maxPendingPacketBytes) {
-                        recordStructuralDecodeRejection()
-                        return SubmitResult.StructuralDecodeRejected(DecodeError.LIMIT_EXCEEDED)
-                    }
-                    when (
-                        val decoded = MeshProtocolAdapter.decode(
-                            generation = currentGeneration,
-                            observedAt = observedAt,
-                            source = PacketSource.Link(event.linkId),
-                            bytes = event.bytes,
-                        )
-                    ) {
-                        is PacketIngress.Accepted -> decoded.event
-                        is PacketIngress.Rejected -> {
-                            recordStructuralDecodeRejection()
-                            return SubmitResult.StructuralDecodeRejected(decoded.error)
-                        }
-                    }
-                }
-                else -> MeshEvent.LinkObserved(
-                    generation = currentGeneration,
-                    observedAt = observedAt,
-                    event = event,
-                )
+            when (val ingress = adaptLinkIngressLocked(event, observedAt)) {
+                is LinkIngress.Accepted -> enqueue(context, ingress.event, acknowledged = null)
+                is LinkIngress.Rejected -> ingress.result
             }
-            enqueue(context, meshEvent, acknowledged = null)
         } finally {
             lifecycleMutex.unlock()
         }
@@ -242,36 +221,13 @@ class MeshRuntime(
         val result = try {
             if (!accepting) return SubmitResult.Closed
             context = activeRun?.takeIf { it.actorJob.isActive } ?: return SubmitResult.Closed
-            val currentGeneration = requireNotNull(mutableState.value).generation
-            val meshEvent = when (event) {
-                is LinkEvent.PayloadReceived -> {
-                    if (event.bytes.size > limits.maxPendingPacketBytes) {
-                        recordStructuralDecodeRejection()
-                        return SubmitResult.StructuralDecodeRejected(DecodeError.LIMIT_EXCEEDED)
-                    }
-                    when (
-                        val decoded = MeshProtocolAdapter.decode(
-                            generation = currentGeneration,
-                            observedAt = observedAt,
-                            source = PacketSource.Link(event.linkId),
-                            bytes = event.bytes,
-                        )
-                    ) {
-                        is PacketIngress.Accepted -> decoded.event
-                        is PacketIngress.Rejected -> {
-                            recordStructuralDecodeRejection()
-                            return SubmitResult.StructuralDecodeRejected(decoded.error)
-                        }
-                    }
+            when (val ingress = adaptLinkIngressLocked(event, observedAt)) {
+                is LinkIngress.Accepted -> {
+                    acknowledged = CompletableDeferred()
+                    enqueue(context, ingress.event, acknowledged)
                 }
-                else -> MeshEvent.LinkObserved(
-                    generation = currentGeneration,
-                    observedAt = observedAt,
-                    event = event,
-                )
+                is LinkIngress.Rejected -> ingress.result
             }
-            acknowledged = CompletableDeferred()
-            enqueue(context, meshEvent, acknowledged)
         } finally {
             lifecycleMutex.unlock()
         }
@@ -279,6 +235,11 @@ class MeshRuntime(
         return awaitExternalAcknowledgement(context, acknowledged)
     }
 
+    /**
+     * Fences effects caused by submissions whose [submitAndAwait] acknowledgement completed before this
+     * call. Callers must exclude concurrent [trySubmit] calls and other unacknowledged external ingress;
+     * events still waiting in the external mailbox are outside this causal ordering guarantee.
+     */
     suspend fun awaitImmediateQuiescence(
         maxProcessedEffects: Int,
     ): RuntimeQuiescenceResult {
@@ -312,6 +273,42 @@ class MeshRuntime(
                 }
             }
             error("Causal fence loop terminated unexpectedly.")
+        }
+    }
+
+    private fun adaptLinkIngressLocked(
+        event: LinkEvent,
+        observedAt: MonotonicTime,
+    ): LinkIngress {
+        val currentGeneration = requireNotNull(mutableState.value).generation
+        if (event !is LinkEvent.PayloadReceived) {
+            return LinkIngress.Accepted(
+                MeshEvent.LinkObserved(
+                    generation = currentGeneration,
+                    observedAt = observedAt,
+                    event = event,
+                ),
+            )
+        }
+        if (event.bytes.size > limits.maxPendingPacketBytes) {
+            recordStructuralDecodeRejection()
+            return LinkIngress.Rejected(
+                SubmitResult.StructuralDecodeRejected(DecodeError.LIMIT_EXCEEDED),
+            )
+        }
+        return when (
+            val decoded = MeshProtocolAdapter.decode(
+                generation = currentGeneration,
+                observedAt = observedAt,
+                source = PacketSource.Link(event.linkId),
+                bytes = event.bytes,
+            )
+        ) {
+            is PacketIngress.Accepted -> LinkIngress.Accepted(decoded.event)
+            is PacketIngress.Rejected -> {
+                recordStructuralDecodeRejection()
+                LinkIngress.Rejected(SubmitResult.StructuralDecodeRejected(decoded.error))
+            }
         }
     }
 
@@ -765,6 +762,16 @@ class MeshRuntime(
         val event: MeshEvent,
         val acknowledged: CompletableDeferred<Unit>?,
     )
+
+    private sealed interface LinkIngress {
+        data class Accepted(
+            val event: MeshEvent,
+        ) : LinkIngress
+
+        data class Rejected(
+            val result: SubmitResult.StructuralDecodeRejected,
+        ) : LinkIngress
+    }
 
     private data class EffectEnvelope(
         val effect: MeshEffect,

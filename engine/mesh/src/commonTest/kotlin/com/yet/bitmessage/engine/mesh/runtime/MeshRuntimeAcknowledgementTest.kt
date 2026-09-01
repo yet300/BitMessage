@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
@@ -192,6 +193,106 @@ class MeshRuntimeAcknowledgementTest {
         )
         runtime.close(MeshFixtures.now)
         parentJob.cancel()
+    }
+
+    @Test
+    fun cancelledAcknowledgementWaiterDoesNotCorruptEffectAccounting() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val executor = BlockingFirstPublicationExecutor(release)
+        val engine = CountingBurstEngine(effectCount = 9)
+        val runtime = runtime(
+            engine = engine,
+            executor = executor,
+            limits = MeshLimits(
+                eventMailboxCapacity = 1,
+                effectQueueCapacity = 9,
+                maxRelayFanout = 1,
+            ),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+        executor.started.await()
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+
+        val cancelledSubmit = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        cancelledSubmit.cancelAndJoin()
+        release.complete(Unit)
+        engine.thirdReduced.await()
+
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 27),
+            runtime.awaitImmediateQuiescence(32),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun cancelledFenceWaiterDoesNotCorruptEffectAccounting() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val runtime = runtime(
+            engine = BurstEngine(effectCount = 1),
+            executor = BlockingFirstPublicationExecutor(release),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+
+        val cancelledFence = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.awaitImmediateQuiescence(8)
+        }
+        cancelledFence.cancelAndJoin()
+        release.complete(Unit)
+
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 1),
+            runtime.awaitImmediateQuiescence(8),
+        )
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 0),
+            runtime.awaitImmediateQuiescence(8),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun repeatedFencesReportExactDeltasAndResetAcrossRestart() = runTest {
+        val runtime = runtime(
+            engine = SequencedBurstEngine(effectCounts = listOf(4, 2, 3)),
+            executor = ImmediateExecutor(),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        val firstGeneration = runtime.generation
+
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(firstGeneration)))
+        assertEquals(
+            RuntimeQuiescenceResult.LimitExceeded(maximumEffects = 2),
+            runtime.awaitImmediateQuiescence(2),
+        )
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 0),
+            runtime.awaitImmediateQuiescence(1),
+        )
+
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(firstGeneration)))
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 2),
+            runtime.awaitImmediateQuiescence(2),
+        )
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 0),
+            runtime.awaitImmediateQuiescence(1),
+        )
+
+        assertEquals(StopResult.Stopped, runtime.stop(MeshFixtures.now))
+        assertEquals(StartResult.Started, runtime.start(MeshFixtures.localPeer, MeshFixtures.now))
+        assertEquals(firstGeneration.next(), runtime.generation)
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 3),
+            runtime.awaitImmediateQuiescence(3),
+        )
+        runtime.close(MeshFixtures.now)
     }
 
     @Test
@@ -702,6 +803,57 @@ class MeshRuntimeAcknowledgementTest {
                     state = state,
                     effects = List(effectCount) { publication(event.generation) },
                 )
+            }
+    }
+
+    private class CountingBurstEngine(
+        private val effectCount: Int,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        val thirdReduced = CompletableDeferred<Unit>()
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    reducedInputs += 1
+                    if (reducedInputs == 3) thirdReduced.complete(Unit)
+                    Transition(
+                        state = state,
+                        effects = List(effectCount) { publication(event.generation) },
+                    )
+                }
+            }
+    }
+
+    private class SequencedBurstEngine(
+        private val effectCounts: List<Int>,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    val effectCount = effectCounts[reducedInputs]
+                    reducedInputs += 1
+                    Transition(
+                        state = state,
+                        effects = List(effectCount) { publication(event.generation) },
+                    )
+                }
             }
     }
 
