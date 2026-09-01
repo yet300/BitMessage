@@ -226,7 +226,7 @@ LinkResult: Written, Backpressured, PayloadTooLarge, Disconnected,
 
 Scanning, discovery, connection establishment, service resolution, restoration, central/peripheral role, and GATT request handling remain adapter lifecycle concerns. They are not mesh commands or events.
 
-No BlueFalcon type crosses `:transport:bluetooth`. The runtime owns `BlueFalcon` and `BlueFalconPeripheral` instances and calls `start`, `stop`, and `close` explicitly. While BlueFalcon PR #254 (ADR 0011 `blue-falcon-plugin-mesh`) demonstrates concurrent Central + Peripheral lifecycle, `peripheral.requests.collect` write handling, and `pendingConnections` concurrency guards (protecting iOS CoreBluetooth against multiple `connect()` calls when `central.peripherals` re-emits on RSSI changes), its custom 81-byte `MeshFramer` and ad-hoc routing are not used; all mesh framing, TTL, and deduplication remain owned by `:protocol:bitchat` and `:engine:mesh`.
+No BlueFalcon type crosses `:transport:bluetooth`. The runtime owns `BlueFalcon` and `BlueFalconPeripheral` instances and calls `start`, `stop`, and `close` explicitly.
 
 `QueuePlugin` is an ATT write/notification queue only. It provides bounded per-session FIFO, total-byte limits, fair session scheduling, readiness handling and typed outcomes. It does not provide fragmentation, protocol ACKs, persistence, retry across disconnect, deduplication, ordering across links, or delivery semantics. Those belong to protocol and engines.
 
