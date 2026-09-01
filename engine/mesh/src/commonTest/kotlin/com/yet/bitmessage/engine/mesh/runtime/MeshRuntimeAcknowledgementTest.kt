@@ -18,11 +18,13 @@ import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkEvent
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -106,6 +108,42 @@ class MeshRuntimeAcknowledgementTest {
         )
         runtime.close(MeshFixtures.now)
         parentJob.cancel()
+    }
+
+    @Test
+    fun executorCancellationClosesRuntimeInsteadOfLeavingActorAccepting() = runTest {
+        val executor = CancellingExecutor()
+        val runtime = runtime(
+            engine = BurstEngine(effectCount = 1),
+            executor = executor,
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.attempted.await()
+        assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(8))
+
+        assertEquals(SubmitResult.Closed, runtime.submitAndAwait(opened(runtime.generation)))
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun reducerCancellationShutsDownEffectWorkerAndAcknowledgementWaiters() = runTest {
+        val executor = UntilCancelledExecutor()
+        val runtime = runtime(
+            engine = CancellingReducerEngine(),
+            executor = executor,
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.started.await()
+
+        assertFailsWith<CancellationException> {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.cancelled.await()
+        assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(8))
+        runtime.close(MeshFixtures.now)
     }
 
     @Test
@@ -371,6 +409,33 @@ class MeshRuntimeAcknowledgementTest {
         }
     }
 
+    private class CancellingExecutor : MeshEffectExecutor {
+        val attempted = CompletableDeferred<Unit>()
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? {
+            if (effect is MeshEffect.PublishPublicPayload) {
+                attempted.complete(Unit)
+                throw CancellationException("executor cancellation")
+            }
+            return null
+        }
+    }
+
+    private class UntilCancelledExecutor : MeshEffectExecutor {
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? {
+            if (effect !is MeshEffect.PublishPublicPayload) return null
+            started.complete(Unit)
+            try {
+                awaitCancellation()
+            } finally {
+                cancelled.complete(Unit)
+            }
+        }
+    }
+
     private class RecordingDigestExecutor : MeshEffectExecutor {
         val recorded = Channel<MeshEffect.ComputePacketDigest>(1)
 
@@ -506,6 +571,29 @@ class MeshRuntimeAcknowledgementTest {
                         effects = List(if (isResult) resultEffects else initialEffects) {
                             publication(event.generation)
                         },
+                    )
+                }
+            }
+    }
+
+    private class CancellingReducerEngine : Engine<MeshState, MeshEvent, MeshEffect> {
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    reducedInputs += 1
+                    if (reducedInputs > 1) throw CancellationException("reducer cancellation")
+                    Transition(
+                        state = state,
+                        effects = listOf(publication(event.generation)),
                     )
                 }
             }

@@ -135,12 +135,12 @@ class MeshRuntime(
             context.actorJob = context.scope.launch { actorLoop(context) }
             context.effectJob = context.scope.launch { effectLoop(context) }
             context.actorJob.invokeOnCompletion { failure ->
-                if (failure != null && failure !is CancellationException) {
+                if (failure != null) {
                     context.supervisor.cancel()
                 }
             }
             context.effectJob.invokeOnCompletion { failure ->
-                if (failure != null && failure !is CancellationException) {
+                if (failure != null) {
                     context.supervisor.cancel()
                 }
             }
