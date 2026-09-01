@@ -171,6 +171,30 @@ class MeshRuntimeAcknowledgementTest {
     }
 
     @Test
+    fun startupThrowableCleansRunContextAndAllowsSubsequentStart() = runTest {
+        val startupFailure = AssertionError("startup reducer failure")
+        val engine = OneShotStartupThrowableEngine(startupFailure)
+        val uncaught = CompletableDeferred<Throwable>()
+        val handler = CoroutineExceptionHandler { _, failure -> uncaught.complete(failure) }
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(backgroundScope.coroutineContext + parentJob + handler)
+        val runtime = MeshRuntime(engine, ImmediateExecutor(), ownedScope, MeshLimits())
+
+        val propagated = assertFailsWith<AssertionError> {
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        }
+        assertEquals(startupFailure.message, propagated.message)
+        assertSame(startupFailure, uncaught.await())
+
+        assertEquals(
+            StartResult.Started,
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now),
+        )
+        runtime.close(MeshFixtures.now)
+        parentJob.cancel()
+    }
+
+    @Test
     fun submitAndAwaitReturnsOnlyAfterTransitionAndEffectsAreRegistered() = runTest {
         val executor = BlockingDigestExecutor()
         val runtime = runtime(executor = executor)
@@ -641,6 +665,24 @@ class MeshRuntimeAcknowledgementTest {
                 }
                 else -> delegate.reduce(state, event)
             }
+    }
+
+    private class OneShotStartupThrowableEngine(
+        private val failure: Throwable,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        private val delegate = MeshEngine()
+        private var failed = false
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> {
+            if (event is MeshEvent.RuntimeStarted && !failed) {
+                failed = true
+                throw failure
+            }
+            return delegate.reduce(state, event)
+        }
     }
 
     private class BurstEngine(

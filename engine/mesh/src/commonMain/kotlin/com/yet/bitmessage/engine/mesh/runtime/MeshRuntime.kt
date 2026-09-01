@@ -153,12 +153,10 @@ class MeshRuntime(
                     ),
                 ) { "Mesh runtime actor terminated during start." }
             } catch (cancelled: CancellationException) {
-                withContext(NonCancellable) { shutdownContext(context) }
-                activeRun = null
+                cleanupFailedStart(context)
                 throw cancelled
-            } catch (failure: Exception) {
-                withContext(NonCancellable) { shutdownContext(context) }
-                activeRun = null
+            } catch (failure: Throwable) {
+                cleanupFailedStart(context)
                 throw failure
             }
             accepting = true
@@ -391,6 +389,16 @@ class MeshRuntime(
             controls = Channel(1),
             traces = Channel(limits.traceBufferCapacity),
         )
+    }
+
+    private suspend fun cleanupFailedStart(context: RunContext) {
+        withContext(NonCancellable) {
+            try {
+                shutdownContext(context)
+            } finally {
+                if (activeRun === context) activeRun = null
+            }
+        }
     }
 
     private suspend fun shutdownContext(context: RunContext) {
