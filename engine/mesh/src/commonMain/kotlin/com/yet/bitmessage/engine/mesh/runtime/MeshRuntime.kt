@@ -366,7 +366,8 @@ class MeshRuntime(
             val currentState = requireNotNull(mutableState.value)
             val stoppingEvent = MeshEvent.RuntimeStopping(currentState.generation, observedAt)
             if (!reduceControl(context, stoppingEvent)) {
-                reduceAndPublishFallback(context, stoppingEvent)
+                context.actorJob.join()
+                reduceStoppingAfterActorTermination(context, stoppingEvent)
             }
         } finally {
             withContext(NonCancellable) {
@@ -540,28 +541,17 @@ class MeshRuntime(
         pendingEffects.addAll(commands)
     }
 
-    private suspend fun reduceAndPublishFallback(
+    private fun reduceStoppingAfterActorTermination(
         context: RunContext,
-        event: MeshEvent,
+        event: MeshEvent.RuntimeStopping,
     ) {
         val current = requireNotNull(mutableState.value)
         val transition = engine.reduce(current, event)
+        check(transition.effects.isEmpty()) {
+            "RuntimeStopping cannot submit effects after the runtime actor has terminated."
+        }
         mutableState.value = transition.state
         publishTrace(context, transition)
-        transition.effects.forEach { effect ->
-            context.registeredEffects = checkedIncrement(
-                context.registeredEffects,
-                "Registered effect count",
-            )
-            context.effects.send(
-                EffectCommand.Execute(
-                    EffectEnvelope(
-                        effect = effect,
-                        observedAt = transition.state.observedAt,
-                    ),
-                ),
-            )
-        }
     }
 
     private fun publishTrace(
@@ -786,13 +776,4 @@ class MeshRuntime(
         "Pending effect capacity exceeded: required=$required, available=$available, maximum=$maximum.",
     )
 
-    private companion object {
-        fun checkedIncrement(
-            value: Long,
-            label: String,
-        ): Long {
-            check(value != Long.MAX_VALUE) { "$label overflow." }
-            return value + 1
-        }
-    }
 }

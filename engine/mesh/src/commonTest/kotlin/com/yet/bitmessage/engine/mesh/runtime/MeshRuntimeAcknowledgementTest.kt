@@ -22,10 +22,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -144,6 +146,28 @@ class MeshRuntimeAcknowledgementTest {
         executor.cancelled.await()
         assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(8))
         runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun stopCannotPublishStoppedBeforeCancellingActorFinishesItsLastTransition() = runTest {
+        val releaseReducer = CompletableDeferred<Unit>()
+        val engine = HeldReducerEngine(releaseReducer)
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(Dispatchers.Default + parentJob)
+        val runtime = MeshRuntime(engine, ImmediateExecutor(), ownedScope, MeshLimits())
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+        engine.entered.await()
+        parentJob.cancel()
+
+        val stopping = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.stop(MeshFixtures.now)
+        }
+        releaseReducer.complete(Unit)
+
+        assertEquals(StopResult.Stopped, stopping.await())
+        assertEquals(MeshLifecycle.STOPPED, assertNotNull(runtime.state.value).lifecycle)
     }
 
     @Test
@@ -596,6 +620,26 @@ class MeshRuntimeAcknowledgementTest {
                         effects = listOf(publication(event.generation)),
                     )
                 }
+            }
+    }
+
+    private class HeldReducerEngine(
+        private val release: CompletableDeferred<Unit>,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        val entered = CompletableDeferred<Unit>()
+        private val delegate = MeshEngine()
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.LinkObserved -> {
+                    entered.complete(Unit)
+                    runBlocking { release.await() }
+                    Transition(state = state.copy(lifecycle = MeshLifecycle.RUNNING))
+                }
+                else -> delegate.reduce(state, event)
             }
     }
 
