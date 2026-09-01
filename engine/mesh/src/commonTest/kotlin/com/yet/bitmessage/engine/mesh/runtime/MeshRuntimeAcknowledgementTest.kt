@@ -5,6 +5,7 @@ import com.yet.bitmessage.engine.mesh.MeshEngine
 import com.yet.bitmessage.engine.mesh.MeshEvent
 import com.yet.bitmessage.engine.mesh.MeshFixtures
 import com.yet.bitmessage.engine.mesh.MeshLimits
+import com.yet.bitmessage.engine.mesh.MeshLifecycle
 import com.yet.bitmessage.engine.mesh.MeshResult
 import com.yet.bitmessage.engine.mesh.MeshState
 import com.yet.bitmessage.foundation.Bytes
@@ -34,6 +35,79 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class MeshRuntimeAcknowledgementTest {
+    @Test
+    fun boundedPendingEffectsCannotDeadlockRendezvousImmediateResults() = runTest {
+        val executor = BackedUpImmediateExecutor(immediateResults = 3)
+        val runtime = runtime(
+            engine = ResultBurstEngine(
+                initialEffects = 9,
+                resultEffects = 2,
+            ),
+            executor = executor,
+            limits = MeshLimits(
+                effectQueueCapacity = 9,
+                maxRelayFanout = 1,
+            ),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val submitting = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, submitting.await())
+
+        executor.releaseFirst.complete(Unit)
+        executor.thirdStarted.await()
+
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 15),
+            runtime.awaitImmediateQuiescence(32),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun overflowingInternalResultFailsWithoutPartiallyPublishingItsTransition() = runTest {
+        val executor = BackedUpImmediateExecutor(immediateResults = 1)
+        val engine = OverflowingResultEngine(
+            initialEffects = 9,
+            resultEffects = 10,
+        )
+        val uncaught = CompletableDeferred<Throwable>()
+        val handler = CoroutineExceptionHandler { _, failure -> uncaught.complete(failure) }
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(backgroundScope.coroutineContext + parentJob + handler)
+        val runtime = MeshRuntime(
+            engine = engine,
+            executor = executor,
+            parentScope = ownedScope,
+            limits = MeshLimits(
+                effectQueueCapacity = 9,
+                maxRelayFanout = 1,
+            ),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val submitting = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, submitting.await())
+
+        executor.releaseFirst.complete(Unit)
+        engine.resultReduced.await()
+
+        assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(32))
+        assertEquals(MeshLifecycle.RUNNING, assertNotNull(runtime.state.value).lifecycle)
+        assertEquals(
+            "Pending effect capacity exceeded: required=10, available=9, maximum=9.",
+            uncaught.await().message,
+        )
+        runtime.close(MeshFixtures.now)
+        parentJob.cancel()
+    }
+
     @Test
     fun submitAndAwaitReturnsOnlyAfterTransitionAndEffectsAreRegistered() = runTest {
         val executor = BlockingDigestExecutor()
@@ -190,13 +264,17 @@ class MeshRuntimeAcknowledgementTest {
             maxRelayFanout = 1,
         )
         val runtime = runtime(
-            engine = BurstEngine(effectCount = 11),
+            engine = BurstEngine(effectCount = 9),
             executor = executor,
             limits = limits,
         )
         runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
         assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
         executor.started.await()
+        assertEquals(
+            SubmitResult.Accepted,
+            runtime.submitAndAwait(opened(runtime.generation)),
+        )
 
         val admittedToMailbox = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
             runtime.submitAndAwait(opened(runtime.generation))
@@ -269,6 +347,28 @@ class MeshRuntimeAcknowledgementTest {
                 }
                 else -> null
             }
+    }
+
+    private class BackedUpImmediateExecutor(
+        private val immediateResults: Int,
+    ) : MeshEffectExecutor {
+        val firstStarted = CompletableDeferred<Unit>()
+        val thirdStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        private var executions = 0
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? {
+            if (effect !is MeshEffect.PublishPublicPayload) return null
+            executions += 1
+            when (executions) {
+                1 -> {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                }
+                3 -> thirdStarted.complete(Unit)
+            }
+            return if (executions <= immediateResults) opened(effect.generation) else null
+        }
     }
 
     private class RecordingDigestExecutor : MeshEffectExecutor {
@@ -348,6 +448,67 @@ class MeshRuntimeAcknowledgementTest {
             state = state.copy(observedAt = event.observedAt),
             effects = listOf(publication(event.generation)),
         )
+    }
+
+    private class ResultBurstEngine(
+        private val initialEffects: Int,
+        private val resultEffects: Int,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    reducedInputs += 1
+                    Transition(
+                        state = state.copy(observedAt = event.observedAt),
+                        effects = List(
+                            if (reducedInputs == 1) initialEffects else resultEffects,
+                        ) { publication(event.generation) },
+                    )
+                }
+            }
+    }
+
+    private class OverflowingResultEngine(
+        private val initialEffects: Int,
+        private val resultEffects: Int,
+    ) : Engine<MeshState, MeshEvent, MeshEffect> {
+        val resultReduced = CompletableDeferred<Unit>()
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    reducedInputs += 1
+                    val isResult = reducedInputs > 1
+                    if (isResult) resultReduced.complete(Unit)
+                    Transition(
+                        state = if (isResult) {
+                            state.copy(lifecycle = MeshLifecycle.STOPPED)
+                        } else {
+                            state
+                        },
+                        effects = List(if (isResult) resultEffects else initialEffects) {
+                            publication(event.generation)
+                        },
+                    )
+                }
+            }
     }
 
     private class BurstEngine(

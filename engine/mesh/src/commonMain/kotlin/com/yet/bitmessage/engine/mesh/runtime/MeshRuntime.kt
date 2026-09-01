@@ -366,7 +366,7 @@ class MeshRuntime(
             val currentState = requireNotNull(mutableState.value)
             val stoppingEvent = MeshEvent.RuntimeStopping(currentState.generation, observedAt)
             if (!reduceControl(context, stoppingEvent)) {
-                reduceAndPublish(context, stoppingEvent)
+                reduceAndPublishFallback(context, stoppingEvent)
             }
         } finally {
             withContext(NonCancellable) {
@@ -406,57 +406,80 @@ class MeshRuntime(
     }
 
     private suspend fun actorLoop(context: RunContext) {
-        var preferActorCommand = true
+        val pendingEffects = ArrayDeque<EffectCommand>(limits.effectQueueCapacity)
+        var pendingFence: EffectCommand.Fence? = null
         while (context.scope.isActive) {
-            val input = if (preferActorCommand) {
-                select<ActorInput> {
+            if (pendingFence != null && pendingEffects.size < limits.effectQueueCapacity) {
+                pendingEffects.addLast(requireNotNull(pendingFence))
+                pendingFence = null
+            }
+            val input = select<ActorInput> {
+                if (pendingFence == null) {
                     context.controls.onReceive { ActorInput.Command(it) }
-                    context.results.onReceive { ActorInput.Result(it) }
-                    context.external.onReceive { ActorInput.External(it) }
                 }
-            } else {
-                select {
-                    context.results.onReceive { ActorInput.Result(it) }
-                    context.controls.onReceive { ActorInput.Command(it) }
+                context.results.onReceive { ActorInput.Result(it) }
+                if (pendingEffects.isNotEmpty()) {
+                    context.effects.onSend(pendingEffects.first()) {
+                        ActorInput.EffectSubmitted
+                    }
+                }
+                if (pendingEffects.isEmpty() && pendingFence == null) {
                     context.external.onReceive { ActorInput.External(it) }
                 }
             }
-            preferActorCommand = when (input) {
+            when (input) {
                 is ActorInput.Command -> {
-                    handleActorCommand(context, input.command)
-                    false
+                    pendingFence = handleActorCommand(
+                        context = context,
+                        command = input.command,
+                        pendingEffects = pendingEffects,
+                    )
                 }
                 is ActorInput.Result -> {
-                    reduceAndPublish(context, input.event)
-                    true
+                    reduceAndPublish(context, input.event, pendingEffects)
                 }
                 is ActorInput.External -> {
-                    reduceAcknowledged(context, input.envelope)
-                    true
+                    reduceAcknowledged(context, input.envelope, pendingEffects)
                 }
+                ActorInput.EffectSubmitted -> pendingEffects.removeFirst()
             }
         }
     }
 
-    private suspend fun handleActorCommand(
+    private fun handleActorCommand(
         context: RunContext,
         command: ActorCommand,
-    ) {
+        pendingEffects: ArrayDeque<EffectCommand>,
+    ): EffectCommand.Fence? =
         when (command) {
             is ActorCommand.Reduce -> reduceAcknowledged(
                 context,
                 ExternalEnvelope(command.event, command.acknowledged),
+                pendingEffects,
             )
-            is ActorCommand.EffectCount -> command.acknowledged.complete(context.registeredEffects)
+                .let { null }
+            is ActorCommand.EffectCount -> {
+                command.acknowledged.complete(context.registeredEffects)
+                null
+            }
+            is ActorCommand.EffectFence -> {
+                val fence = EffectCommand.Fence(command.acknowledged)
+                if (pendingEffects.size < limits.effectQueueCapacity) {
+                    pendingEffects.addLast(fence)
+                    null
+                } else {
+                    fence
+                }
+            }
         }
-    }
 
-    private suspend fun reduceAcknowledged(
+    private fun reduceAcknowledged(
         context: RunContext,
         envelope: ExternalEnvelope,
+        pendingEffects: ArrayDeque<EffectCommand>,
     ) {
         try {
-            reduceAndPublish(context, envelope.event)
+            reduceAndPublish(context, envelope.event, pendingEffects)
         } catch (failure: Throwable) {
             envelope.acknowledged?.completeExceptionally(failure)
             throw failure
@@ -484,7 +507,40 @@ class MeshRuntime(
         }
     }
 
-    private suspend fun reduceAndPublish(
+    private fun reduceAndPublish(
+        context: RunContext,
+        event: MeshEvent,
+        pendingEffects: ArrayDeque<EffectCommand>,
+    ) {
+        val current = requireNotNull(mutableState.value)
+        val transition = engine.reduce(current, event)
+        val required = transition.effects.size
+        val available = limits.effectQueueCapacity - pendingEffects.size
+        if (required > available) {
+            throw PendingEffectCapacityExceededException(
+                required = required,
+                available = available,
+                maximum = limits.effectQueueCapacity,
+            )
+        }
+        check(required.toLong() <= Long.MAX_VALUE - context.registeredEffects) {
+            "Registered effect count overflow."
+        }
+        val commands = transition.effects.map { effect ->
+            EffectCommand.Execute(
+                EffectEnvelope(
+                    effect = effect,
+                    observedAt = transition.state.observedAt,
+                ),
+            )
+        }
+        mutableState.value = transition.state
+        publishTrace(context, transition)
+        context.registeredEffects += required.toLong()
+        pendingEffects.addAll(commands)
+    }
+
+    private suspend fun reduceAndPublishFallback(
         context: RunContext,
         event: MeshEvent,
     ) {
@@ -565,15 +621,14 @@ class MeshRuntime(
     }
 
     private suspend fun awaitEffectFence(context: RunContext): Long? {
-        if (!context.effectJob.isActive) return null
+        if (!context.actorJob.isActive || !context.effectJob.isActive) return null
         val acknowledged = CompletableDeferred<Long>()
-        val sent = select {
-            context.effectJob.onJoin { false }
-            context.effects.onSend(EffectCommand.Fence(acknowledged)) { true }
-        }
-        if (!sent) return null
+        if (!sendActorCommand(context, ActorCommand.EffectFence(acknowledged))) return null
         return select {
             acknowledged.onAwait { it }
+            context.actorJob.onJoin {
+                if (acknowledged.isCompleted) acknowledged.await() else null
+            }
             context.effectJob.onJoin {
                 if (acknowledged.isCompleted) acknowledged.await() else null
             }
@@ -676,6 +731,10 @@ class MeshRuntime(
         data class EffectCount(
             val acknowledged: CompletableDeferred<Long>,
         ) : ActorCommand
+
+        data class EffectFence(
+            val acknowledged: CompletableDeferred<Long>,
+        ) : ActorCommand
     }
 
     private sealed interface ActorInput {
@@ -690,6 +749,8 @@ class MeshRuntime(
         data class External(
             val envelope: ExternalEnvelope,
         ) : ActorInput
+
+        data object EffectSubmitted : ActorInput
     }
 
     private sealed interface EffectCommand {
@@ -715,6 +776,14 @@ class MeshRuntime(
     private data class TimerKey(
         val correlationValue: String,
         val timerId: TimerId,
+    )
+
+    private class PendingEffectCapacityExceededException(
+        val required: Int,
+        val available: Int,
+        val maximum: Int,
+    ) : IllegalStateException(
+        "Pending effect capacity exceeded: required=$required, available=$available, maximum=$maximum.",
     )
 
     private companion object {
