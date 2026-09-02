@@ -435,6 +435,26 @@ class MeshRuntime(
         var pendingFence: EffectCommand.Fence? = null
 
         while (context.scope.isActive) {
+            val stoppingCommand = (pendingControl as? ActorCommand.Reduce)
+                ?.takeIf { it.event is MeshEvent.RuntimeStopping }
+            if (stoppingCommand != null) {
+                pendingControl = null
+                val stopping = stageTransition(
+                    StagedEvent(
+                        event = stoppingCommand.event,
+                        acknowledged = stoppingCommand.acknowledged,
+                        replacesCausalCredit = false,
+                    ),
+                    effectCapacity,
+                )
+                // Teardown preempts uncommitted work, commits STOPPED through the sole writer, and exits
+                // before any staged result can publish a late state over it. Teardown effects are not
+                // registered: shutdown cancels the effect worker immediately after this acknowledgement.
+                mutableState.value = stopping.transition.state
+                publishTrace(context, stopping.transition)
+                stopping.acknowledged?.complete(Unit)
+                return
+            }
             if (pendingFence?.acknowledged?.isCancelled == true) pendingFence = null
             if (
                 (pendingControl as? ActorCommand.EffectCount)?.acknowledged?.isCancelled == true ||

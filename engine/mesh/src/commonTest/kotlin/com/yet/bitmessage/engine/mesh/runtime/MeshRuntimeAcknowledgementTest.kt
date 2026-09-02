@@ -31,6 +31,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -106,6 +108,33 @@ class MeshRuntimeAcknowledgementTest {
             runtime.awaitImmediateQuiescence(32),
         )
         runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun stopPreemptsAStagedResultAndCancelsTheBlockedWorker() = runTest {
+        val executor = StagedStopExecutor()
+        val runtime = runtime(
+            engine = SequencedBurstEngine(effectCounts = listOf(9, 9, 9)),
+            executor = executor,
+            limits = MeshLimits(effectQueueCapacity = 9, maxRelayFanout = 1),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val firstSubmission = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, firstSubmission.await())
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.releaseFirst.complete(Unit)
+        executor.secondStarted.await()
+
+        assertEquals(
+            StopResult.Stopped,
+            withTimeout(1.seconds) { runtime.stop(MeshFixtures.now) },
+        )
+        executor.secondCancelled.await()
+        assertEquals(MeshLifecycle.STOPPED, assertNotNull(runtime.state.value).lifecycle)
     }
 
     @Test
@@ -635,6 +664,35 @@ class MeshRuntimeAcknowledgementTest {
                 throw CancellationException("executor cancellation")
             }
             return null
+        }
+    }
+
+    private class StagedStopExecutor : MeshEffectExecutor {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val secondCancelled = CompletableDeferred<Unit>()
+        private var executions = 0
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? {
+            if (effect !is MeshEffect.PublishPublicPayload) return null
+            executions += 1
+            return when (executions) {
+                1 -> {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                    opened(effect.generation)
+                }
+                2 -> {
+                    secondStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        secondCancelled.complete(Unit)
+                    }
+                }
+                else -> null
+            }
         }
     }
 
