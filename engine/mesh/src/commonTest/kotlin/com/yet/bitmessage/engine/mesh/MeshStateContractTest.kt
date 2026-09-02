@@ -87,6 +87,19 @@ class MeshStateContractTest {
     }
 
     @Test
+    fun channelSentinelCapacitiesAreRejectedAsNonFinite() {
+        assertFailsWith<IllegalArgumentException> {
+            MeshLimits(eventMailboxCapacity = Int.MAX_VALUE)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            MeshLimits(effectQueueCapacity = Int.MAX_VALUE)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            MeshLimits(traceBufferCapacity = Int.MAX_VALUE)
+        }
+    }
+
+    @Test
     fun snapshotCollectionsDefensivelyOwnMapAndListInputs() {
         val mutableMap = mutableMapOf("a" to 1)
         val mutableList = mutableListOf("link-a")

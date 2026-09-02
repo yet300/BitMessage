@@ -63,6 +63,13 @@ data class MeshLimits(
                 routeLifetime,
             ),
         )
+        require(
+            eventMailboxCapacity < Int.MAX_VALUE &&
+                effectQueueCapacity < Int.MAX_VALUE &&
+                traceBufferCapacity < Int.MAX_VALUE
+        ) {
+            "Mesh channel capacities must be finite and cannot use the unlimited channel sentinel."
+        }
         require(maxPeerObservationsPerLink <= maxPeerObservations) {
             "Per-link peer observations cannot exceed the global limit."
         }
