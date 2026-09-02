@@ -41,6 +41,74 @@ import kotlin.test.assertTrue
 
 class MeshRuntimeAcknowledgementTest {
     @Test
+    fun validResultTransitionWaitsForMomentaryLedgerPressure() = runTest {
+        val executor = BackedUpImmediateExecutor(immediateResults = 1)
+        val runtime = runtime(
+            engine = SequencedBurstEngine(effectCounts = listOf(9, 9, 2)),
+            executor = executor,
+            limits = MeshLimits(
+                effectQueueCapacity = 9,
+                maxRelayFanout = 1,
+            ),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val firstSubmission = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, firstSubmission.await())
+        assertEquals(
+            SubmitResult.Accepted,
+            runtime.submitAndAwait(opened(runtime.generation)),
+        )
+
+        executor.releaseFirst.complete(Unit)
+
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 20),
+            runtime.awaitImmediateQuiescence(32),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
+    fun maximumResultTransitionIgnoresCancelledFencePressure() = runTest {
+        val executor = BackedUpImmediateExecutor(immediateResults = 1)
+        val runtime = runtime(
+            engine = SequencedBurstEngine(effectCounts = listOf(9, 9, 9)),
+            executor = executor,
+            limits = MeshLimits(
+                effectQueueCapacity = 9,
+                maxRelayFanout = 1,
+            ),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val firstSubmission = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, firstSubmission.await())
+        assertEquals(
+            SubmitResult.Accepted,
+            runtime.submitAndAwait(opened(runtime.generation)),
+        )
+        val cancelledFence = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.awaitImmediateQuiescence(32)
+        }
+        cancelledFence.cancelAndJoin()
+
+        executor.releaseFirst.complete(Unit)
+
+        assertEquals(
+            RuntimeQuiescenceResult.Quiescent(processedEffects = 27),
+            runtime.awaitImmediateQuiescence(32),
+        )
+        runtime.close(MeshFixtures.now)
+    }
+
+    @Test
     fun boundedPendingEffectsCannotDeadlockRendezvousImmediateResults() = runTest {
         val executor = BackedUpImmediateExecutor(immediateResults = 3)
         val runtime = runtime(

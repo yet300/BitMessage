@@ -175,8 +175,9 @@ class MeshRuntime(
     }
 
     /**
-     * Waits until [event]'s transition, state, trace, and complete effect list have been admitted to
-     * the actor's bounded ordered ledger. Asynchronous effect execution is not part of this acknowledgement.
+     * Waits until [event]'s state is committed, trace publication has been attempted under the configured
+     * drop policy, the registered-effect count is advanced, and its complete effect list is admitted to the
+     * actor's bounded ordered ledger. Asynchronous effect execution is not part of this acknowledgement.
      */
     suspend fun submitAndAwait(event: MeshEvent): SubmitResult {
         if (!lifecycleMutex.tryLock()) return SubmitResult.Backpressured
@@ -328,17 +329,23 @@ class MeshRuntime(
     private suspend fun awaitExternalAcknowledgement(
         context: RunContext,
         acknowledged: CompletableDeferred<Unit>,
-    ): SubmitResult = select {
-        acknowledged.onAwait { SubmitResult.Accepted }
-        context.actorJob.onJoin {
-            if (acknowledged.isCompleted) {
-                acknowledged.await()
-                SubmitResult.Accepted
-            } else {
-                SubmitResult.Closed
+    ): SubmitResult =
+        try {
+            select {
+                acknowledged.onAwait { SubmitResult.Accepted }
+                context.actorJob.onJoin {
+                    if (acknowledged.isCompleted) {
+                        acknowledged.await()
+                        SubmitResult.Accepted
+                    } else {
+                        SubmitResult.Closed
+                    }
+                }
             }
+        } catch (cancelled: CancellationException) {
+            acknowledged.cancel(cancelled)
+            throw cancelled
         }
-    }
 
     suspend fun stop(observedAt: MonotonicTime): StopResult =
         lifecycleMutex.withLock { stopActiveRunLocked(observedAt) }
@@ -383,6 +390,7 @@ class MeshRuntime(
             external = Channel(limits.eventMailboxCapacity),
             effects = Channel(limits.effectQueueCapacity),
             results = Channel(Channel.RENDEZVOUS),
+            effectSettlements = Channel(Channel.RENDEZVOUS),
             controls = Channel(1),
             traces = Channel(limits.traceBufferCapacity),
         )
@@ -407,90 +415,161 @@ class MeshRuntime(
         context.external.close()
         context.effects.close()
         context.results.close()
+        context.effectSettlements.close()
         context.controls.close()
         context.traces.close()
     }
 
     private suspend fun actorLoop(context: RunContext) {
-        val pendingEffects = ArrayDeque<EffectCommand>(limits.effectQueueCapacity)
+        val pendingEffects = ArrayDeque<EffectCommand.Execute>()
+        // Each path is FIFO. Settlements have causal priority; independent async results are staged only
+        // when enough logical credit remains for one maximum-size transition.
+        val settledEffectResults = ArrayDeque<MeshEvent>()
+        val asynchronousResults = ArrayDeque<MeshEvent>()
+        val effectCapacity = limits.effectQueueCapacity
+        val maximumCausalWork = checkedCausalWorkCapacity(effectCapacity)
+        var causalWork = 0L
+        var inFlightEffects = 0L
+        var stagedTransition: StagedTransition? = null
+        var pendingControl: ActorCommand? = null
         var pendingFence: EffectCommand.Fence? = null
+
         while (context.scope.isActive) {
-            if (pendingFence != null && pendingEffects.size < limits.effectQueueCapacity) {
-                pendingEffects.addLast(requireNotNull(pendingFence))
-                pendingFence = null
+            if (pendingFence?.acknowledged?.isCancelled == true) pendingFence = null
+            if (
+                (pendingControl as? ActorCommand.EffectCount)?.acknowledged?.isCancelled == true ||
+                (pendingControl as? ActorCommand.EffectFence)?.acknowledged?.isCancelled == true
+            ) {
+                pendingControl = null
             }
+
+            var madeProgress: Boolean
+            do {
+                madeProgress = false
+                val staged = stagedTransition
+                if (staged != null) {
+                    val required = staged.transition.effects.size
+                    val replacement = if (staged.replacesCausalCredit) 1L else 0L
+                    val nextCausalWork = causalWork - replacement + required.toLong()
+                    if (
+                        required <= effectCapacity - pendingEffects.size &&
+                        nextCausalWork <= maximumCausalWork
+                    ) {
+                        commitTransition(context, staged, pendingEffects)
+                        causalWork = nextCausalWork
+                        inFlightEffects += required.toLong()
+                        stagedTransition = null
+                        madeProgress = true
+                    } else if (nextCausalWork > maximumCausalWork && inFlightEffects == 0L) {
+                        val failure = CausalEffectCapacityExceededException(
+                            required = required,
+                            available = maximumCausalWork - (causalWork - replacement),
+                            maximum = maximumCausalWork,
+                        )
+                        staged.acknowledged?.completeExceptionally(failure)
+                        throw failure
+                    }
+                }
+
+                if (stagedTransition == null) {
+                    val stagedEvent = when {
+                        pendingControl is ActorCommand.Reduce -> {
+                            val command = pendingControl
+                            pendingControl = null
+                            StagedEvent(command.event, command.acknowledged, replacesCausalCredit = false)
+                        }
+                        settledEffectResults.isNotEmpty() -> StagedEvent(
+                            event = settledEffectResults.removeFirst(),
+                            acknowledged = null,
+                            replacesCausalCredit = true,
+                        )
+                        pendingControl is ActorCommand.EffectCount -> {
+                            val command = pendingControl
+                            pendingControl = null
+                            command.acknowledged.complete(context.registeredEffects)
+                            madeProgress = true
+                            null
+                        }
+                        pendingControl is ActorCommand.EffectFence -> {
+                            val command = pendingControl
+                            pendingControl = null
+                            if (!command.acknowledged.isCancelled) {
+                                pendingFence = EffectCommand.Fence(command.acknowledged)
+                            }
+                            madeProgress = true
+                            null
+                        }
+                        asynchronousResults.isNotEmpty() &&
+                            causalWork <= maximumCausalWork - effectCapacity.toLong() -> StagedEvent(
+                                event = asynchronousResults.removeFirst(),
+                                acknowledged = null,
+                                replacesCausalCredit = false,
+                            )
+                        else -> null
+                    }
+                    if (stagedEvent != null) {
+                        stagedTransition = stageTransition(stagedEvent, effectCapacity)
+                        madeProgress = true
+                    }
+                }
+            } while (madeProgress && context.scope.isActive)
+
             val input = select<ActorInput> {
-                if (pendingFence == null) {
+                if (pendingControl == null) {
                     context.controls.onReceive { ActorInput.Command(it) }
                 }
-                context.results.onReceive { ActorInput.Result(it) }
+                // Worker settlements are always serviceable: receiving one releases or replaces exactly
+                // one in-flight causal credit, so staged transitions cannot deadlock the sole worker.
+                context.effectSettlements.onReceive { ActorInput.Settlement(it) }
+                if (asynchronousResults.size < limits.eventMailboxCapacity) {
+                    context.results.onReceive { ActorInput.AsynchronousResult(it) }
+                }
                 if (pendingEffects.isNotEmpty()) {
                     context.effects.onSend(pendingEffects.first()) {
                         ActorInput.EffectSubmitted
                     }
                 }
-                if (pendingEffects.isEmpty() && pendingFence == null) {
+                if (
+                    pendingFence != null &&
+                    stagedTransition == null &&
+                    pendingEffects.isEmpty()
+                ) {
+                    context.effects.onSend(requireNotNull(pendingFence)) {
+                        ActorInput.FenceSubmitted
+                    }
+                }
+                if (
+                    stagedTransition == null &&
+                    pendingEffects.isEmpty() &&
+                    settledEffectResults.isEmpty() &&
+                    asynchronousResults.isEmpty() &&
+                    pendingControl == null &&
+                    pendingFence == null &&
+                    causalWork <= maximumCausalWork - effectCapacity.toLong()
+                ) {
                     context.external.onReceive { ActorInput.External(it) }
                 }
             }
             when (input) {
-                is ActorInput.Command -> {
-                    pendingFence = handleActorCommand(
-                        context = context,
-                        command = input.command,
-                        pendingEffects = pendingEffects,
-                    )
+                is ActorInput.Command -> pendingControl = input.command
+                is ActorInput.Settlement -> {
+                    check(inFlightEffects > 0L) { "Effect settled without an in-flight causal credit." }
+                    inFlightEffects -= 1
+                    if (input.settlement.event == null) {
+                        causalWork -= 1
+                    } else {
+                        settledEffectResults.addLast(input.settlement.event)
+                    }
                 }
-                is ActorInput.Result -> {
-                    reduceAndPublish(context, input.event, pendingEffects)
-                }
-                is ActorInput.External -> {
-                    reduceAcknowledged(context, input.envelope, pendingEffects)
-                }
+                is ActorInput.AsynchronousResult -> asynchronousResults.addLast(input.event)
+                is ActorInput.External -> stagedTransition = stageTransition(
+                    StagedEvent(input.envelope.event, input.envelope.acknowledged, false),
+                    effectCapacity,
+                )
                 ActorInput.EffectSubmitted -> pendingEffects.removeFirst()
+                ActorInput.FenceSubmitted -> pendingFence = null
             }
         }
-    }
-
-    private fun handleActorCommand(
-        context: RunContext,
-        command: ActorCommand,
-        pendingEffects: ArrayDeque<EffectCommand>,
-    ): EffectCommand.Fence? =
-        when (command) {
-            is ActorCommand.Reduce -> reduceAcknowledged(
-                context,
-                ExternalEnvelope(command.event, command.acknowledged),
-                pendingEffects,
-            )
-                .let { null }
-            is ActorCommand.EffectCount -> {
-                command.acknowledged.complete(context.registeredEffects)
-                null
-            }
-            is ActorCommand.EffectFence -> {
-                val fence = EffectCommand.Fence(command.acknowledged)
-                if (pendingEffects.size < limits.effectQueueCapacity) {
-                    pendingEffects.addLast(fence)
-                    null
-                } else {
-                    fence
-                }
-            }
-        }
-
-    private fun reduceAcknowledged(
-        context: RunContext,
-        envelope: ExternalEnvelope,
-        pendingEffects: ArrayDeque<EffectCommand>,
-    ) {
-        try {
-            reduceAndPublish(context, envelope.event, pendingEffects)
-        } catch (failure: Throwable) {
-            envelope.acknowledged?.completeExceptionally(failure)
-            throw failure
-        }
-        envelope.acknowledged?.complete(Unit)
     }
 
     private suspend fun reduceControl(
@@ -513,22 +592,39 @@ class MeshRuntime(
         }
     }
 
-    private fun reduceAndPublish(
-        context: RunContext,
-        event: MeshEvent,
-        pendingEffects: ArrayDeque<EffectCommand>,
-    ) {
-        val current = requireNotNull(mutableState.value)
-        val transition = engine.reduce(current, event)
-        val required = transition.effects.size
-        val available = limits.effectQueueCapacity - pendingEffects.size
-        if (required > available) {
-            throw PendingEffectCapacityExceededException(
-                required = required,
-                available = available,
-                maximum = limits.effectQueueCapacity,
-            )
+    private fun stageTransition(
+        stagedEvent: StagedEvent,
+        effectCapacity: Int,
+    ): StagedTransition {
+        val transition = try {
+            engine.reduce(requireNotNull(mutableState.value), stagedEvent.event)
+        } catch (failure: Throwable) {
+            stagedEvent.acknowledged?.completeExceptionally(failure)
+            throw failure
         }
+        if (transition.effects.size > effectCapacity) {
+            val failure = PendingEffectCapacityExceededException(
+                required = transition.effects.size,
+                available = effectCapacity,
+                maximum = effectCapacity,
+            )
+            stagedEvent.acknowledged?.completeExceptionally(failure)
+            throw failure
+        }
+        return StagedTransition(
+            transition = transition,
+            acknowledged = stagedEvent.acknowledged,
+            replacesCausalCredit = stagedEvent.replacesCausalCredit,
+        )
+    }
+
+    private fun commitTransition(
+        context: RunContext,
+        staged: StagedTransition,
+        pendingEffects: ArrayDeque<EffectCommand.Execute>,
+    ) {
+        val transition = staged.transition
+        val required = transition.effects.size
         check(required.toLong() <= Long.MAX_VALUE - context.registeredEffects) {
             "Registered effect count overflow."
         }
@@ -544,6 +640,15 @@ class MeshRuntime(
         publishTrace(context, transition)
         context.registeredEffects += required.toLong()
         pendingEffects.addAll(commands)
+        staged.acknowledged?.complete(Unit)
+    }
+
+    private fun checkedCausalWorkCapacity(effectCapacity: Int): Long {
+        val capacity = effectCapacity.toLong()
+        check(capacity <= (Long.MAX_VALUE - 1L) / 2L) {
+            "Effect capacity is too large for causal-work accounting."
+        }
+        return capacity * 2L + 1L
     }
 
     private fun reduceStoppingAfterActorTermination(
@@ -579,8 +684,9 @@ class MeshRuntime(
                     check(context.processedEffects != Long.MAX_VALUE) {
                         "Processed effect count overflow."
                     }
-                    processEffect(context, command.envelope)
+                    val event = processEffect(context, command.envelope)
                     context.processedEffects += 1
+                    context.effectSettlements.send(EffectSettlement(event))
                 }
                 is EffectCommand.Fence -> {
                     command.acknowledged.complete(context.processedEffects)
@@ -592,10 +698,16 @@ class MeshRuntime(
     private suspend fun processEffect(
         context: RunContext,
         envelope: EffectEnvelope,
-    ) {
+    ): MeshEvent? =
         when (val effect = envelope.effect) {
-            is MeshEffect.Schedule -> scheduleTimer(context, envelope, effect)
-            is MeshEffect.Cancel -> cancelTimer(context, effect)
+            is MeshEffect.Schedule -> {
+                scheduleTimer(context, envelope, effect)
+                null
+            }
+            is MeshEffect.Cancel -> {
+                cancelTimer(context, effect)
+                null
+            }
             is MeshEffect.ReinjectPacket -> {
                 when (
                     val decoded = MeshProtocolAdapter.decode(
@@ -605,28 +717,33 @@ class MeshRuntime(
                         bytes = effect.bytes,
                     )
                 ) {
-                    is PacketIngress.Accepted -> context.results.send(decoded.event)
-                    is PacketIngress.Rejected -> recordStructuralDecodeRejection()
+                    is PacketIngress.Accepted -> decoded.event
+                    is PacketIngress.Rejected -> {
+                        recordStructuralDecodeRejection()
+                        null
+                    }
                 }
             }
-            else -> executeEffect(executor, effect, envelope.observedAt)?.let { event ->
-                context.results.send(event)
-            }
+            else -> executeEffect(executor, effect, envelope.observedAt)
         }
-    }
 
     private suspend fun awaitEffectFence(context: RunContext): Long? {
         if (!context.actorJob.isActive || !context.effectJob.isActive) return null
         val acknowledged = CompletableDeferred<Long>()
         if (!sendActorCommand(context, ActorCommand.EffectFence(acknowledged))) return null
-        return select {
-            acknowledged.onAwait { it }
-            context.actorJob.onJoin {
-                if (acknowledged.isCompleted) acknowledged.await() else null
+        return try {
+            select {
+                acknowledged.onAwait { it }
+                context.actorJob.onJoin {
+                    if (acknowledged.isCompleted) acknowledged.await() else null
+                }
+                context.effectJob.onJoin {
+                    if (acknowledged.isCompleted) acknowledged.await() else null
+                }
             }
-            context.effectJob.onJoin {
-                if (acknowledged.isCompleted) acknowledged.await() else null
-            }
+        } catch (cancelled: CancellationException) {
+            acknowledged.cancel(cancelled)
+            throw cancelled
         }
     }
 
@@ -634,11 +751,16 @@ class MeshRuntime(
         if (!context.actorJob.isActive) return null
         val acknowledged = CompletableDeferred<Long>()
         if (!sendActorCommand(context, ActorCommand.EffectCount(acknowledged))) return null
-        return select {
-            acknowledged.onAwait { it }
-            context.actorJob.onJoin {
-                if (acknowledged.isCompleted) acknowledged.await() else null
+        return try {
+            select {
+                acknowledged.onAwait { it }
+                context.actorJob.onJoin {
+                    if (acknowledged.isCompleted) acknowledged.await() else null
+                }
             }
+        } catch (cancelled: CancellationException) {
+            acknowledged.cancel(cancelled)
+            throw cancelled
         }
     }
 
@@ -704,6 +826,7 @@ class MeshRuntime(
         val external: Channel<ExternalEnvelope>,
         val effects: Channel<EffectCommand>,
         val results: Channel<MeshEvent>,
+        val effectSettlements: Channel<EffectSettlement>,
         val controls: Channel<ActorCommand>,
         val traces: Channel<TraceRecord>,
     ) {
@@ -737,7 +860,11 @@ class MeshRuntime(
             val command: ActorCommand,
         ) : ActorInput
 
-        data class Result(
+        data class Settlement(
+            val settlement: EffectSettlement,
+        ) : ActorInput
+
+        data class AsynchronousResult(
             val event: MeshEvent,
         ) : ActorInput
 
@@ -746,6 +873,8 @@ class MeshRuntime(
         ) : ActorInput
 
         data object EffectSubmitted : ActorInput
+
+        data object FenceSubmitted : ActorInput
     }
 
     private sealed interface EffectCommand {
@@ -757,6 +886,22 @@ class MeshRuntime(
             val acknowledged: CompletableDeferred<Long>,
         ) : EffectCommand
     }
+
+    private data class EffectSettlement(
+        val event: MeshEvent?,
+    )
+
+    private data class StagedEvent(
+        val event: MeshEvent,
+        val acknowledged: CompletableDeferred<Unit>?,
+        val replacesCausalCredit: Boolean,
+    )
+
+    private data class StagedTransition(
+        val transition: Transition<MeshState, MeshEffect>,
+        val acknowledged: CompletableDeferred<Unit>?,
+        val replacesCausalCredit: Boolean,
+    )
 
     private data class ExternalEnvelope(
         val event: MeshEvent,
@@ -789,6 +934,14 @@ class MeshRuntime(
         val maximum: Int,
     ) : IllegalStateException(
         "Pending effect capacity exceeded: required=$required, available=$available, maximum=$maximum.",
+    )
+
+    private class CausalEffectCapacityExceededException(
+        val required: Int,
+        val available: Long,
+        val maximum: Long,
+    ) : IllegalStateException(
+        "Causal effect capacity exceeded: required=$required, available=$available, maximum=$maximum.",
     )
 
 }
