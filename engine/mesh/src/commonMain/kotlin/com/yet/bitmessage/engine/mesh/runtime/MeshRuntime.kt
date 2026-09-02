@@ -538,6 +538,19 @@ class MeshRuntime(
                 if (pendingControl == null) {
                     context.controls.onReceive { ActorInput.Command(it) }
                 }
+                if (
+                    pendingFence != null &&
+                    stagedTransition == null &&
+                    pendingEffects.isEmpty() &&
+                    settledEffectResults.isEmpty() &&
+                    asynchronousResults.isEmpty()
+                ) {
+                    // Once every earlier event is committed, queue the fence before accepting another
+                    // settlement. The worker still settles its current effect before consuming the fence.
+                    context.effects.onSend(requireNotNull(pendingFence)) {
+                        ActorInput.FenceSubmitted
+                    }
+                }
                 // Worker settlements are always serviceable: receiving one releases or replaces exactly
                 // one in-flight causal credit, so staged transitions cannot deadlock the sole worker.
                 context.effectSettlements.onReceive { ActorInput.Settlement(it) }
@@ -547,15 +560,6 @@ class MeshRuntime(
                 if (pendingEffects.isNotEmpty()) {
                     context.effects.onSend(pendingEffects.first()) {
                         ActorInput.EffectSubmitted
-                    }
-                }
-                if (
-                    pendingFence != null &&
-                    stagedTransition == null &&
-                    pendingEffects.isEmpty()
-                ) {
-                    context.effects.onSend(requireNotNull(pendingFence)) {
-                        ActorInput.FenceSubmitted
                     }
                 }
                 if (

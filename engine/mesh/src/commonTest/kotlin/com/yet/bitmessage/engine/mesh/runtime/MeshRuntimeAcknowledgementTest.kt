@@ -32,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +43,43 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class MeshRuntimeAcknowledgementTest {
+    @Test
+    fun fastImmediateCycleCannotStarveAnEligibleFence() = runTest {
+        val executor = FenceRaceExecutor()
+        val engine = FenceRaceEngine()
+        val parentJob = Job()
+        val ownedScope = CoroutineScope(Dispatchers.Default + parentJob)
+        val runtime = MeshRuntime(
+            engine,
+            executor,
+            ownedScope,
+            MeshLimits(),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.fifthStarted.await()
+        assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+        engine.blockingReductionEntered.await()
+
+        val fence = backgroundScope.async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+            runtime.awaitImmediateQuiescence(4)
+        }
+        executor.releaseFifth.complete(Unit)
+        executor.fifthReturning.await()
+        engine.releaseBlockingReduction.complete(Unit)
+        executor.sixthStarted.await()
+
+        val result = try {
+            withContext(Dispatchers.Default) {
+                withTimeout(1.seconds) { fence.await() }
+            }
+        } finally {
+            runtime.close(MeshFixtures.now)
+            parentJob.cancel()
+        }
+        assertEquals(RuntimeQuiescenceResult.LimitExceeded(4), result)
+    }
+
     @Test
     fun validResultTransitionWaitsForMomentaryLedgerPressure() = runTest {
         val executor = BackedUpImmediateExecutor(immediateResults = 1)
@@ -742,6 +780,32 @@ class MeshRuntimeAcknowledgementTest {
             }
     }
 
+    private class FenceRaceExecutor : MeshEffectExecutor {
+        val fifthStarted = CompletableDeferred<Unit>()
+        val releaseFifth = CompletableDeferred<Unit>()
+        val fifthReturning = CompletableDeferred<Unit>()
+        val sixthStarted = CompletableDeferred<Unit>()
+        private var processed = 0
+
+        override suspend fun execute(effect: MeshEffect): MeshEvent? {
+            if (effect !is MeshEffect.PublishPublicPayload) return null
+            processed += 1
+            return when (processed) {
+                in 1..4 -> null
+                5 -> {
+                    fifthStarted.complete(Unit)
+                    releaseFifth.await()
+                    fifthReturning.complete(Unit)
+                    opened(effect.generation)
+                }
+                else -> {
+                    sixthStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        }
+    }
+
     private class FiniteLoopingExecutor(
         private val immediateResults: Int,
         private val terminalPublications: Int,
@@ -788,6 +852,41 @@ class MeshRuntimeAcknowledgementTest {
             state = state.copy(observedAt = event.observedAt),
             effects = listOf(publication(event.generation)),
         )
+    }
+
+    private class FenceRaceEngine : Engine<MeshState, MeshEvent, MeshEffect> {
+        val blockingReductionEntered = CompletableDeferred<Unit>()
+        val releaseBlockingReduction = CompletableDeferred<Unit>()
+        private val delegate = MeshEngine()
+        private var reducedInputs = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> =
+            when (event) {
+                is MeshEvent.RuntimeStarted,
+                is MeshEvent.RuntimeStopping,
+                -> delegate.reduce(state, event)
+                else -> {
+                    reducedInputs += 1
+                    when (reducedInputs) {
+                        1 -> Transition(
+                            state = state.copy(observedAt = event.observedAt),
+                            effects = List(5) { publication(event.generation) },
+                        )
+                        2 -> {
+                            blockingReductionEntered.complete(Unit)
+                            runBlocking { releaseBlockingReduction.await() }
+                            Transition(state = state.copy(observedAt = event.observedAt))
+                        }
+                        else -> Transition(
+                            state = state.copy(observedAt = event.observedAt),
+                            effects = listOf(publication(event.generation)),
+                        )
+                    }
+                }
+            }
     }
 
     private class ResultBurstEngine(
