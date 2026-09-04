@@ -709,8 +709,8 @@ class MeshRuntime(
                         "Processed effect count overflow."
                     }
                     val event = processEffect(context, command.envelope)
-                    context.processedEffects += 1
                     context.effectSettlements.send(EffectSettlement(event))
+                    context.processedEffects += 1
                 }
                 is EffectCommand.Fence -> {
                     command.acknowledged.complete(context.processedEffects)
