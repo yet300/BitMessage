@@ -249,6 +249,64 @@ class MeshRuntimeAcknowledgementTest {
     }
 
     @Test
+    fun stopPreemptsAStagedResultWhenAFenceQueryOccupiesPendingControl() = runTest {
+        val executor = StagedStopExecutor()
+        val runtime = runtime(
+            engine = SequencedBurstEngine(effectCounts = listOf(9, 9, 9)),
+            executor = executor,
+            limits = MeshLimits(effectQueueCapacity = 9, maxRelayFanout = 1),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+
+        val firstSubmission = backgroundScope.async {
+            runtime.submitAndAwait(opened(runtime.generation))
+        }
+        executor.firstStarted.await()
+        assertEquals(SubmitResult.Accepted, firstSubmission.await())
+        assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+        executor.releaseFirst.complete(Unit)
+        executor.secondStarted.await()
+
+        val barrierDispatcher = Dispatchers.Default.limitedParallelism(1)
+        val pendingFence = backgroundScope.async(
+            context = barrierDispatcher,
+            start = CoroutineStart.UNDISPATCHED,
+        ) {
+            runtime.awaitImmediateQuiescence(32)
+        }
+        withContext(barrierDispatcher) {
+            // Queued after the barrier continuation; completion proves the fence command was sent
+            // while the actor is unable to commit the pressure-staged result.
+        }
+        val stopping = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+            runtime.stop(MeshFixtures.now)
+        }
+
+        try {
+            assertEquals(
+                StopResult.Stopped,
+                withContext(Dispatchers.Default) {
+                    withTimeout(1.seconds) { stopping.await() }
+                },
+            )
+            assertEquals(
+                RuntimeQuiescenceResult.Closed,
+                withContext(Dispatchers.Default) {
+                    withTimeout(1.seconds) { pendingFence.await() }
+                },
+            )
+            executor.secondCancelled.await()
+            assertEquals(MeshLifecycle.STOPPED, assertNotNull(runtime.state.value).lifecycle)
+        } finally {
+            pendingFence.cancel()
+            withContext(Dispatchers.Default) {
+                withTimeout(1.seconds) { stopping.await() }
+            }
+            runtime.close(MeshFixtures.now)
+        }
+    }
+
+    @Test
     fun boundedPendingEffectsCannotDeadlockRendezvousImmediateResults() = runTest {
         val executor = BackedUpImmediateExecutor(immediateResults = 3)
         val runtime = runtime(

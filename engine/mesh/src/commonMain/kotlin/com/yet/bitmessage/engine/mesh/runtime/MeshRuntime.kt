@@ -411,6 +411,7 @@ class MeshRuntime(
             effects = Channel(limits.effectQueueCapacity),
             results = Channel(Channel.RENDEZVOUS),
             effectSettlements = Channel(Channel.RENDEZVOUS),
+            lifecycleControls = Channel(Channel.RENDEZVOUS),
             controls = Channel(1),
             traces = Channel(limits.traceBufferCapacity),
         )
@@ -444,6 +445,7 @@ class MeshRuntime(
         context.effects.close()
         context.results.close()
         context.effectSettlements.close()
+        context.lifecycleControls.close()
         context.controls.close()
         context.traces.close()
     }
@@ -459,14 +461,15 @@ class MeshRuntime(
         var causalWork = 0L
         var inFlightEffects = 0L
         var stagedTransition: StagedTransition? = null
+        var pendingLifecycleControl: ActorCommand.Reduce? = null
         var pendingControl: ActorCommand? = null
         var pendingFence: EffectCommand.Fence? = null
 
         while (context.scope.isActive) {
-            val stoppingCommand = (pendingControl as? ActorCommand.Reduce)
+            val stoppingCommand = pendingLifecycleControl
                 ?.takeIf { it.event is MeshEvent.RuntimeStopping }
             if (stoppingCommand != null) {
-                pendingControl = null
+                pendingLifecycleControl = null
                 val stopping = stageTransition(
                     StagedEvent(
                         event = stoppingCommand.event,
@@ -521,9 +524,9 @@ class MeshRuntime(
 
                 if (stagedTransition == null) {
                     val stagedEvent = when {
-                        pendingControl is ActorCommand.Reduce -> {
-                            val command = pendingControl
-                            pendingControl = null
+                        pendingLifecycleControl != null -> {
+                            val command = requireNotNull(pendingLifecycleControl)
+                            pendingLifecycleControl = null
                             StagedEvent(command.event, command.acknowledged, replacesCausalCredit = false)
                         }
                         settledEffectResults.isNotEmpty() -> StagedEvent(
@@ -563,6 +566,9 @@ class MeshRuntime(
             } while (madeProgress && context.scope.isActive)
 
             val input = select<ActorInput> {
+                if (pendingLifecycleControl == null) {
+                    context.lifecycleControls.onReceive { ActorInput.LifecycleCommand(it) }
+                }
                 if (pendingControl == null) {
                     context.controls.onReceive { ActorInput.Command(it) }
                 }
@@ -595,6 +601,7 @@ class MeshRuntime(
                     pendingEffects.isEmpty() &&
                     settledEffectResults.isEmpty() &&
                     asynchronousResults.isEmpty() &&
+                    pendingLifecycleControl == null &&
                     pendingControl == null &&
                     pendingFence == null &&
                     causalWork <= maximumCausalWork - effectCapacity.toLong()
@@ -603,6 +610,7 @@ class MeshRuntime(
                 }
             }
             when (input) {
+                is ActorInput.LifecycleCommand -> pendingLifecycleControl = input.command
                 is ActorInput.Command -> pendingControl = input.command
                 is ActorInput.Settlement -> {
                     check(inFlightEffects > 0L) { "Effect settled without an in-flight causal credit." }
@@ -630,7 +638,7 @@ class MeshRuntime(
     ): Boolean {
         if (!context.actorJob.isActive) return false
         val acknowledged = CompletableDeferred<Unit>()
-        if (!sendActorCommand(context, ActorCommand.Reduce(event, acknowledged))) return false
+        if (!sendLifecycleCommand(context, ActorCommand.Reduce(event, acknowledged))) return false
         return select {
             acknowledged.onAwait { true }
             context.actorJob.onJoin {
@@ -815,6 +823,17 @@ class MeshRuntime(
         }
     }
 
+    private suspend fun sendLifecycleCommand(
+        context: RunContext,
+        command: ActorCommand.Reduce,
+    ): Boolean {
+        if (!context.actorJob.isActive) return false
+        return select {
+            context.actorJob.onJoin { false }
+            context.lifecycleControls.onSend(command) { true }
+        }
+    }
+
     private suspend fun sendActorCommand(
         context: RunContext,
         command: ActorCommand,
@@ -878,6 +897,7 @@ class MeshRuntime(
         val effects: Channel<EffectCommand>,
         val results: Channel<MeshEvent>,
         val effectSettlements: Channel<EffectSettlement>,
+        val lifecycleControls: Channel<ActorCommand.Reduce>,
         val controls: Channel<ActorCommand>,
         val traces: Channel<TraceRecord>,
     ) {
@@ -907,6 +927,10 @@ class MeshRuntime(
     }
 
     private sealed interface ActorInput {
+        data class LifecycleCommand(
+            val command: ActorCommand.Reduce,
+        ) : ActorInput
+
         data class Command(
             val command: ActorCommand,
         ) : ActorInput
