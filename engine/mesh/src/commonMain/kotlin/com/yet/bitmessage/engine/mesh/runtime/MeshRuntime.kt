@@ -638,17 +638,24 @@ class MeshRuntime(
     ): Boolean {
         if (!context.actorJob.isActive) return false
         val acknowledged = CompletableDeferred<Unit>()
-        if (!sendLifecycleCommand(context, ActorCommand.Reduce(event, acknowledged))) return false
-        return select {
-            acknowledged.onAwait { true }
-            context.actorJob.onJoin {
-                if (acknowledged.isCompleted) {
-                    acknowledged.await()
-                    true
-                } else {
-                    false
+        return try {
+            if (!sendLifecycleCommand(context, ActorCommand.Reduce(event, acknowledged))) return false
+            select {
+                acknowledged.onAwait { true }
+                context.actorJob.onJoin {
+                    if (acknowledged.isCompleted) {
+                        acknowledged.await()
+                        true
+                    } else {
+                        false
+                    }
                 }
             }
+        } catch (cancelled: CancellationException) {
+            acknowledged.cancel(cancelled)
+            throw cancelled
+        } finally {
+            if (!acknowledged.isCompleted) acknowledged.cancel()
         }
     }
 
@@ -789,8 +796,8 @@ class MeshRuntime(
     private suspend fun awaitEffectFence(context: RunContext): Long? {
         if (!context.actorJob.isActive || !context.effectJob.isActive) return null
         val acknowledged = CompletableDeferred<Long>()
-        if (!sendActorCommand(context, ActorCommand.EffectFence(acknowledged))) return null
         return try {
+            if (!sendActorCommand(context, ActorCommand.EffectFence(acknowledged))) return null
             select {
                 acknowledged.onAwait { it }
                 context.actorJob.onJoin {
@@ -803,14 +810,16 @@ class MeshRuntime(
         } catch (cancelled: CancellationException) {
             acknowledged.cancel(cancelled)
             throw cancelled
+        } finally {
+            if (!acknowledged.isCompleted) acknowledged.cancel()
         }
     }
 
     private suspend fun awaitRegisteredEffectCount(context: RunContext): Long? {
         if (!context.actorJob.isActive) return null
         val acknowledged = CompletableDeferred<Long>()
-        if (!sendActorCommand(context, ActorCommand.EffectCount(acknowledged))) return null
         return try {
+            if (!sendActorCommand(context, ActorCommand.EffectCount(acknowledged))) return null
             select {
                 acknowledged.onAwait { it }
                 context.actorJob.onJoin {
@@ -820,6 +829,8 @@ class MeshRuntime(
         } catch (cancelled: CancellationException) {
             acknowledged.cancel(cancelled)
             throw cancelled
+        } finally {
+            if (!acknowledged.isCompleted) acknowledged.cancel()
         }
     }
 
