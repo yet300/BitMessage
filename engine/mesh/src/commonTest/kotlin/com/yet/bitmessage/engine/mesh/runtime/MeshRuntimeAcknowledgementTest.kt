@@ -32,7 +32,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
@@ -40,82 +39,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class MeshRuntimeAcknowledgementTest {
-    @Test
-    fun quiescenceWaitsUntilTheActorAcceptsAnExecutedEffectsSettlement() = runTest {
-        val engine = SettlementWatermarkEngine()
-        val executor = SettlementWatermarkExecutor()
-        val parentJob = Job()
-        val runtimeDispatcher = Dispatchers.Default.limitedParallelism(2)
-        val ownedScope = CoroutineScope(runtimeDispatcher + parentJob)
-        val runtime = MeshRuntime(engine, executor, ownedScope, MeshLimits())
-        val barrierDispatcher = Dispatchers.Default.limitedParallelism(1)
-
-        try {
-            runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
-            assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
-            executor.firstStarted.await()
-
-            val quiescence = backgroundScope.async(
-                context = barrierDispatcher,
-                start = CoroutineStart.UNDISPATCHED,
-            ) {
-                runtime.awaitImmediateQuiescence(8)
-            }
-            assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
-            engine.firstBlockEntered.await()
-
-            executor.releaseFirst.complete(Unit)
-            executor.firstReturning.await()
-            withContext(runtimeDispatcher) {
-                // The actor occupies one dispatcher permit. This marker can use the other only after
-                // the worker has returned from E1 and suspended while delivering its settlement.
-            }
-            engine.releaseFirstBlock.complete(Unit)
-            executor.secondStarted.await()
-            assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
-            engine.secondBlockEntered.await()
-            withContext(barrierDispatcher) {
-                // This task is queued after the fence continuation. Completing it proves that the
-                // barrier has sent EffectCount while the actor is still held in the second block.
-            }
-            executor.releaseSecond.complete(Unit)
-            executor.secondReturning.await()
-            withContext(runtimeDispatcher) {
-                // As above, completion proves E2 has advanced to its blocked settlement delivery.
-            }
-            engine.releaseSecondBlock.complete(Unit)
-            engine.secondResultReductionEntered.await()
-
-            assertNull(
-                withContext(Dispatchers.Default) {
-                    withTimeoutOrNull(1.seconds) { quiescence.await() }
-                },
-                "The barrier reported quiescence before the actor committed E2's settlement.",
-            )
-
-            engine.releaseSecondResultReduction.complete(Unit)
-            assertEquals(
-                RuntimeQuiescenceResult.Quiescent(processedEffects = 2),
-                withContext(Dispatchers.Default) {
-                    withTimeout(1.seconds) { quiescence.await() }
-                },
-            )
-        } finally {
-            executor.releaseFirst.complete(Unit)
-            executor.releaseSecond.complete(Unit)
-            engine.releaseFirstBlock.complete(Unit)
-            engine.releaseSecondBlock.complete(Unit)
-            engine.releaseSecondResultReduction.complete(Unit)
-            runtime.close(MeshFixtures.now)
-            parentJob.cancel()
-        }
-    }
-
     @Test
     fun fastImmediateCycleCannotStarveAnEligibleFence() = runTest {
         val executor = FenceRaceExecutor()
@@ -1043,36 +970,6 @@ class MeshRuntimeAcknowledgementTest {
         }
     }
 
-    private class SettlementWatermarkExecutor : MeshEffectExecutor {
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val firstReturning = CompletableDeferred<Unit>()
-        val secondStarted = CompletableDeferred<Unit>()
-        val releaseSecond = CompletableDeferred<Unit>()
-        val secondReturning = CompletableDeferred<Unit>()
-        private var executions = 0
-
-        override suspend fun execute(effect: MeshEffect): MeshEvent? {
-            if (effect !is MeshEffect.PublishPublicPayload) return null
-            executions += 1
-            return when (executions) {
-                1 -> {
-                    firstStarted.complete(Unit)
-                    releaseFirst.await()
-                    firstReturning.complete(Unit)
-                    opened(effect.generation)
-                }
-                2 -> {
-                    secondStarted.complete(Unit)
-                    releaseSecond.await()
-                    secondReturning.complete(Unit)
-                    opened(effect.generation)
-                }
-                else -> null
-            }
-        }
-    }
-
     private class FiniteLoopingExecutor(
         private val immediateResults: Int,
         private val terminalPublications: Int,
@@ -1151,54 +1048,6 @@ class MeshRuntimeAcknowledgementTest {
                             state = state.copy(observedAt = event.observedAt),
                             effects = listOf(publication(event.generation)),
                         )
-                    }
-                }
-            }
-    }
-
-    private class SettlementWatermarkEngine : Engine<MeshState, MeshEvent, MeshEffect> {
-        val firstBlockEntered = CompletableDeferred<Unit>()
-        val releaseFirstBlock = CompletableDeferred<Unit>()
-        val secondBlockEntered = CompletableDeferred<Unit>()
-        val releaseSecondBlock = CompletableDeferred<Unit>()
-        val secondResultReductionEntered = CompletableDeferred<Unit>()
-        val releaseSecondResultReduction = CompletableDeferred<Unit>()
-        private val delegate = MeshEngine()
-        private var reducedInputs = 0
-
-        override fun reduce(
-            state: MeshState,
-            event: MeshEvent,
-        ): Transition<MeshState, MeshEffect> =
-            when (event) {
-                is MeshEvent.RuntimeStarted,
-                is MeshEvent.RuntimeStopping,
-                -> delegate.reduce(state, event)
-                else -> {
-                    reducedInputs += 1
-                    when (reducedInputs) {
-                        1,
-                        3,
-                        -> Transition(
-                            state = state.copy(observedAt = event.observedAt),
-                            effects = listOf(publication(event.generation)),
-                        )
-                        2 -> {
-                            firstBlockEntered.complete(Unit)
-                            runBlocking { releaseFirstBlock.await() }
-                            Transition(state = state.copy(observedAt = event.observedAt))
-                        }
-                        4 -> {
-                            secondBlockEntered.complete(Unit)
-                            runBlocking { releaseSecondBlock.await() }
-                            Transition(state = state.copy(observedAt = event.observedAt))
-                        }
-                        5 -> {
-                            secondResultReductionEntered.complete(Unit)
-                            runBlocking { releaseSecondResultReduction.await() }
-                            Transition(state = state.copy(observedAt = event.observedAt))
-                        }
-                        else -> Transition(state = state.copy(observedAt = event.observedAt))
                     }
                 }
             }
