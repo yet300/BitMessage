@@ -363,21 +363,41 @@ class MeshRuntime(
         val context = activeRun ?: return StopResult.AlreadyStopped
         stopping = true
         accepting = false
+        val currentState = requireNotNull(mutableState.value)
+        val stoppingEvent = MeshEvent.RuntimeStopping(currentState.generation, observedAt)
+        var reduceAfterTermination = false
+        var callerCancellation: CancellationException? = null
 
         try {
-            val currentState = requireNotNull(mutableState.value)
-            val stoppingEvent = MeshEvent.RuntimeStopping(currentState.generation, observedAt)
-            if (!reduceControl(context, stoppingEvent)) {
-                context.actorJob.join()
-                reduceStoppingAfterActorTermination(context, stoppingEvent)
+            try {
+                if (!reduceControl(context, stoppingEvent)) {
+                    context.actorJob.join()
+                    reduceAfterTermination = true
+                }
+            } catch (cancelled: CancellationException) {
+                reduceAfterTermination = true
+                callerCancellation = cancelled
             }
         } finally {
             withContext(NonCancellable) {
-                shutdownContext(context)
-                if (activeRun === context) activeRun = null
-                stopping = false
+                try {
+                    terminateContextJobs(context)
+                    if (
+                        reduceAfterTermination &&
+                        activeRun === context &&
+                        mutableState.value?.generation == stoppingEvent.generation &&
+                        mutableState.value?.lifecycle != MeshLifecycle.STOPPED
+                    ) {
+                        reduceStoppingAfterActorTermination(context, stoppingEvent)
+                    }
+                } finally {
+                    closeContextChannels(context)
+                    if (activeRun === context) activeRun = null
+                    stopping = false
+                }
             }
         }
+        callerCancellation?.let { throw it }
         return StopResult.Stopped
     }
 
@@ -407,11 +427,19 @@ class MeshRuntime(
     }
 
     private suspend fun shutdownContext(context: RunContext) {
+        terminateContextJobs(context)
+        closeContextChannels(context)
+    }
+
+    private suspend fun terminateContextJobs(context: RunContext) {
         val timerJobs = context.timerMutex.withLock {
             context.timers.values.toList().also { context.timers.clear() }
         }
         timerJobs.forEach(Job::cancel)
         context.supervisor.cancelAndJoin()
+    }
+
+    private fun closeContextChannels(context: RunContext) {
         context.external.close()
         context.effects.close()
         context.results.close()
@@ -681,9 +709,8 @@ class MeshRuntime(
     ) {
         val current = requireNotNull(mutableState.value)
         val transition = engine.reduce(current, event)
-        check(transition.effects.isEmpty()) {
-            "RuntimeStopping cannot submit effects after the runtime actor has terminated."
-        }
+        // The worker is already terminated. RuntimeStopping effects follow the same explicit discard
+        // policy as the actor-owned stopping path and are never registered during teardown.
         mutableState.value = transition.state
         publishTrace(context, transition)
     }

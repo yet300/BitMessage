@@ -380,6 +380,112 @@ class MeshRuntimeAcknowledgementTest {
     }
 
     @Test
+    fun callerCancelledStopStillCommitsStoppedAfterActorTermination() = runTest {
+        val engine = CallerCancelledTeardownEngine()
+        val parentJob = Job()
+        val callerDispatcher = Dispatchers.Default.limitedParallelism(1)
+        val runtime = MeshRuntime(
+            engine,
+            ImmediateExecutor(),
+            CoroutineScope(Dispatchers.Default + parentJob),
+            MeshLimits(),
+        )
+
+        try {
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+            assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+            assertTrue(assertNotNull(runtime.state.value).links.isNotEmpty())
+            assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+            engine.heldReductionEntered.await()
+
+            val stopping = backgroundScope.async(
+                context = callerDispatcher,
+                start = CoroutineStart.UNDISPATCHED,
+            ) {
+                runtime.stop(MeshFixtures.now)
+            }
+            assertTrue(!stopping.isCompleted)
+            assertEquals(SubmitResult.Backpressured, runtime.trySubmit(opened(runtime.generation)))
+
+            val cancellation = CancellationException("cancel stop while control awaits actor")
+            stopping.cancel(cancellation)
+            withContext(callerDispatcher) {
+                // Queued after cancellation; this runs only once shutdown has cancelled the runtime
+                // supervisor and suspended joining the held actor.
+            }
+            engine.releaseHeldReduction.complete(Unit)
+            val propagated = assertFailsWith<CancellationException> {
+                withContext(Dispatchers.Default) {
+                    withTimeout(1.seconds) { stopping.await() }
+                }
+            }
+
+            assertEquals(cancellation.message, propagated.message)
+            assertStoppedAndTransientStateIsEmpty(assertNotNull(runtime.state.value))
+            assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(1))
+            assertEquals(StopResult.AlreadyStopped, runtime.stop(MeshFixtures.now))
+            assertEquals(StartResult.Started, runtime.start(MeshFixtures.localPeer, MeshFixtures.now))
+        } finally {
+            engine.releaseHeldReduction.complete(Unit)
+            runtime.close(MeshFixtures.now)
+            parentJob.cancel()
+        }
+    }
+
+    @Test
+    fun callerCancelledCloseStillCommitsStoppedAndRemainsPermanentlyClosed() = runTest {
+        val engine = CallerCancelledTeardownEngine()
+        val parentJob = Job()
+        val callerDispatcher = Dispatchers.Default.limitedParallelism(1)
+        val runtime = MeshRuntime(
+            engine,
+            ImmediateExecutor(),
+            CoroutineScope(Dispatchers.Default + parentJob),
+            MeshLimits(),
+        )
+
+        try {
+            runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+            assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+            assertTrue(assertNotNull(runtime.state.value).links.isNotEmpty())
+            assertEquals(SubmitResult.Accepted, runtime.trySubmit(opened(runtime.generation)))
+            engine.heldReductionEntered.await()
+
+            val closing = backgroundScope.async(
+                context = callerDispatcher,
+                start = CoroutineStart.UNDISPATCHED,
+            ) {
+                runtime.close(MeshFixtures.now)
+            }
+            assertTrue(!closing.isCompleted)
+            assertEquals(SubmitResult.Backpressured, runtime.trySubmit(opened(runtime.generation)))
+
+            val cancellation = CancellationException("cancel close while control awaits actor")
+            closing.cancel(cancellation)
+            withContext(callerDispatcher) {
+                // Queued after cancellation; this runs only once shutdown has cancelled the runtime
+                // supervisor and suspended joining the held actor.
+            }
+            engine.releaseHeldReduction.complete(Unit)
+            val propagated = assertFailsWith<CancellationException> {
+                withContext(Dispatchers.Default) {
+                    withTimeout(1.seconds) { closing.await() }
+                }
+            }
+
+            assertEquals(cancellation.message, propagated.message)
+            assertStoppedAndTransientStateIsEmpty(assertNotNull(runtime.state.value))
+            assertEquals(RuntimeQuiescenceResult.Closed, runtime.awaitImmediateQuiescence(1))
+            assertEquals(StopResult.AlreadyStopped, runtime.stop(MeshFixtures.now))
+            assertEquals(StartResult.Closed, runtime.start(MeshFixtures.localPeer, MeshFixtures.now))
+        } finally {
+            engine.releaseHeldReduction.complete(Unit)
+            runtime.close(MeshFixtures.now)
+            parentJob.cancel()
+        }
+    }
+
+    @Test
     fun startupThrowableCleansRunContextAndAllowsSubsequentStart() = runTest {
         val startupFailure = AssertionError("startup reducer failure")
         val engine = OneShotStartupThrowableEngine(startupFailure)
@@ -1144,6 +1250,31 @@ class MeshRuntimeAcknowledgementTest {
             }
     }
 
+    private class CallerCancelledTeardownEngine : Engine<MeshState, MeshEvent, MeshEffect> {
+        val heldReductionEntered = CompletableDeferred<Unit>()
+        val releaseHeldReduction = CompletableDeferred<Unit>()
+        private val delegate = MeshEngine()
+        private var linkEvents = 0
+
+        override fun reduce(
+            state: MeshState,
+            event: MeshEvent,
+        ): Transition<MeshState, MeshEffect> {
+            if (event !is MeshEvent.LinkObserved) return delegate.reduce(state, event)
+            linkEvents += 1
+            if (linkEvents == 1) return delegate.reduce(state, event)
+
+            heldReductionEntered.complete(Unit)
+            runBlocking { releaseHeldReduction.await() }
+            return Transition(
+                state = state.copy(
+                    lifecycle = MeshLifecycle.RUNNING,
+                    observedAt = event.observedAt,
+                ),
+            )
+        }
+    }
+
     private class OneShotStartupThrowableEngine(
         private val failure: Throwable,
     ) : Engine<MeshState, MeshEvent, MeshEffect> {
@@ -1234,6 +1365,22 @@ class MeshRuntimeAcknowledgementTest {
     }
 
     private companion object {
+        fun assertStoppedAndTransientStateIsEmpty(state: MeshState) {
+            assertEquals(MeshLifecycle.STOPPED, state.lifecycle)
+            assertTrue(state.links.isEmpty())
+            assertTrue(state.provisionalBindings.isEmpty())
+            assertTrue(state.pendingAdmissions.isEmpty())
+            assertTrue(state.pendingFragmentDecodes.isEmpty())
+            assertTrue(state.fragmentStreams.isEmpty())
+            assertTrue(state.routeObservations.isEmpty())
+            assertTrue(state.scheduledRelays.isEmpty())
+            assertTrue(state.pendingRelayEntropy.isEmpty())
+            assertTrue(state.pendingRelayEncodes.isEmpty())
+            assertTrue(state.pendingLinkWrites.isEmpty())
+            assertEquals(0, state.aggregatePendingBytes)
+            assertEquals(0, state.aggregateFragmentBytes)
+        }
+
         fun opened(generation: Generation): MeshEvent.LinkObserved = MeshEvent.LinkObserved(
             generation = generation,
             observedAt = MeshFixtures.now,
