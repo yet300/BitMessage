@@ -16,6 +16,16 @@
 
 ## Required execution discipline
 
+### Execution record (2026-09-05)
+
+- Tasks 1 and 2 are implemented and reviewed. SHA-256 coverage includes independently checked algorithm vectors at padding boundaries, binary input, and one million `a` bytes; packet fixtures remain codec-derived and non-normative.
+- Task 4 is implemented but remains under concurrency remediation/review. Task 5 and the simulator scenarios have not started. Passing mesh tests alone do not close the outstanding review gate.
+- Execute Tasks 4 and 5 before Task 3: Task 3's `FireRuntimeTimer` references `MeshTimerKey`, which Task 5 introduces. Do not create a temporary duplicate key type.
+- Run focused `testAndroidHostTest --tests ...` commands separately from the unfiltered `meshEngineCheck`/`allTests` invocation. Combining the filter with the gate suppresses the required coverage anchor after the gate cleans its XML results.
+- Runtime pressure regressions require atomic complete-transition admission, bounded staging, settlement progress, and lifecycle preemption. Temporary queue occupancy is backpressure; it is not an invalid transition.
+- Review findings require code-path evidence or a reproducing test. The proposed pre-settlement watermark race was withdrawn: a fence returns an immutable count, and a single worker cannot consume that fence before settling preceding effects. It must not be reported as a proven defect or regression fix.
+- Phase 6 remains outside this execution scope.
+
 For every behavioral task:
 
 1. Write the named failing test first.
