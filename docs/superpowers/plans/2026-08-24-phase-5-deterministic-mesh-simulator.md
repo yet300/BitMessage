@@ -2096,6 +2096,8 @@ rtk git commit -m "test: prove fragment and relay loop convergence"
 - Create: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/GeneratedAdversarialScenarioTest.kt`
 - Modify: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulationSnapshot.kt`
 - Modify: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulationTrace.kt`
+- Modify: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulationEvent.kt`
+- Modify: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulatedNetwork.kt`
 
 - [ ] **Step 1: Write exact replay equality tests.**
 
@@ -2151,7 +2153,7 @@ class GeneratedAdversarialScenarioTest {
                 }
                 assertTrue(snapshot.pendingEvents.size <= scenario.simulationLimits.maxScheduledEvents, "seed=$seed")
                 assertTrue(snapshot.trace.none {
-                    it.category == TraceCategory.WRITE_COMPLETED && it.outcome == "written-while-closed"
+                    it.category == TraceCategory.WRITE_COMPLETED && it.outcome == TraceOutcome.WRITTEN_WHILE_CLOSED
                 }, "seed=$seed")
             }
             assertTrue(result.finalSnapshot.processedEvents <= scenario.simulationLimits.maxProcessedEvents, "seed=$seed")
@@ -2195,6 +2197,8 @@ data class GeneratedScenario(
 ```
 
 Generation uses at most four nodes, six connections, and 128 actions. It chooses all packets, delays, fault matches, partitions, and protocol seeds before execution. `executeScenario` receives no RNG. All action and map projections are sorted or preserve explicit generation order.
+
+Define a closed `ScenarioAction` and add a matching scheduled `SimulationEvent` variant. `executeScenario` inserts every future action into the one global virtual-event queue in explicit plan order before execution; it must not maintain a second timed action list or manually jump the clock to dispatch those actions. The network's dispatch path handles each action at its queued deadline. This closes the Design 2 scheduled-scenario-action family without a speculative Task 3 variant.
 
 Do not implement shrinking. A failing test throws one bounded `SimulationFailure` containing scenario name, seed, explicit topology/actions/fault plan, protocol seeds, time, processed-event count, state sizes, and the last 64 redacted trace records.
 
