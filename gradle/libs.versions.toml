@@ -1,36 +1,36 @@
 [versions]
 agp = "9.3.1"
-kotlin = "2.4.10"
-metro = "1.4.1"
+kotlin = "2.4.20"
+metro = "1.4.3"
 
 android-compileSdk = "37"
 android-minSdk = "26"
-android-targetSdk = "36"
+android-targetSdk = "37"
 
 gms-location = "21.4.0"
 core-ktx = "1.19.0"
 androidx-activity = "1.13.0"
 androidx-lifecycle = "2.11.0"
 
-composeMultiplatform = "1.11.1"
+composeMultiplatform = "1.12.0"
 material3 = "1.11.0-alpha07"
-coil = "3.5.0"
+coil = "3.6.3"
 
 decompose = "3.5.0"
-essenty = "2.5.0"
+essenty = "2.6.0"
 mvi = "4.4.0"
 
-kermit = "2.1.0"
-ksafe = "3.0.0"
-grant = "2.3.0"
-compass = "3.2.0"
+kermit = "2.2.0"
+ksafe = "3.2.0"
+grant = "2.6.0"
+compass = "4.0.0"
 kompress = "2.3.1"                # karmakrafts Kompress — pure-Kotlin KMP DEFLATE (RFC1951 raw), iOS-wire compatible
 artitor = "0.1.2"                 # io.github.yet300:tor — KMP Arti/Tor wrapper
-qrose = "1.1.2"
+qrose = "1.3.0"
 
 #crypto
 cryptography-kotlin = "0.6.0"     # whyoleg/cryptography-kotlin (SHA/HMAC/HKDF/PBKDF2/AES-GCM/Ed25519/random)
-secp256k1 = "0.23.0"              # ACINQ secp256k1-kmp (Nostr secp256k1 + BIP-340 Schnorr + ECDH)
+secp256k1 = "0.24.0"              # ACINQ secp256k1-kmp (Nostr secp256k1 + BIP-340 Schnorr + ECDH)
 
 # JSON
 kotlinx-serialization = "1.11.0"
@@ -41,7 +41,7 @@ kotlinxDatetime = "0.8.0"
 kotlinxIo = "0.9.1"
 
 # Ktor (HTTP + WebSocket client; OkHttp engine honors the Arti SOCKS proxy)
-ktor = "3.5.2"
+ktor = "3.6.0"
 
 #test
 turbine = "1.2.1"
