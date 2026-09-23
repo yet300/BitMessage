@@ -280,7 +280,7 @@ class SimulationEntropyTest {
         override suspend fun submitClose(nodeId: SimulatedNodeId, command: LinkCommand.Close) {
             closes += command
         }
-        override fun recordPublication(nodeId: SimulatedNodeId, effect: MeshEffect.PublishPublicPayload) =
+        override suspend fun recordPublication(nodeId: SimulatedNodeId, effect: MeshEffect.PublishPublicPayload) =
             onPublication(effect)
     }
 

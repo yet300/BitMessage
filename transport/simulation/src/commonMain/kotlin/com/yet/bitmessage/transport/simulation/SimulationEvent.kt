@@ -3,7 +3,9 @@ package com.yet.bitmessage.transport.simulation
 import com.yet.bitmessage.engine.mesh.MeshEvent
 import com.yet.bitmessage.engine.mesh.runtime.MeshTimerKey
 import com.yet.bitmessage.foundation.Bytes
+import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.model.LinkId
+import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.transport.api.LinkEvent
 
 enum class ScheduledCategory(val isPacketNetworkWork: Boolean) {
@@ -21,7 +23,12 @@ internal sealed interface SimulationEvent {
         val directionId: SimulatedLinkId,
         val targetNode: SimulatedNodeId,
         val targetLinkId: LinkId,
+        val epoch: Long,
         val bytes: Bytes,
+        val submittedAt: MonotonicTime,
+        val packetId: PacketId?,
+        val ttl: UByte?,
+        val packetClassification: String,
     ) : SimulationEvent {
         override val category: ScheduledCategory = ScheduledCategory.PAYLOAD_DELIVERY
     }

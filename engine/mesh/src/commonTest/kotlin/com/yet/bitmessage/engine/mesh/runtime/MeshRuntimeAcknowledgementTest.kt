@@ -77,7 +77,9 @@ class MeshRuntimeAcknowledgementTest {
             runtime.close(MeshFixtures.now)
             parentJob.cancel()
         }
-        assertEquals(RuntimeQuiescenceResult.LimitExceeded(4), result)
+        val limit = assertIs<RuntimeQuiescenceResult.LimitExceeded>(result)
+        assertEquals(4, limit.maximumEffects)
+        assertTrue(limit.processedEffects > 4)
     }
 
     @Test
@@ -565,7 +567,7 @@ class MeshRuntimeAcknowledgementTest {
 
         assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(firstGeneration)))
         assertEquals(
-            RuntimeQuiescenceResult.LimitExceeded(maximumEffects = 2),
+            RuntimeQuiescenceResult.LimitExceeded(maximumEffects = 2, processedEffects = 4),
             runtime.awaitImmediateQuiescence(2),
         )
         assertEquals(
@@ -665,10 +667,11 @@ class MeshRuntimeAcknowledgementTest {
         assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
         releaseLoop.complete(Unit)
 
-        assertEquals(
-            RuntimeQuiescenceResult.LimitExceeded(4),
+        val limit = assertIs<RuntimeQuiescenceResult.LimitExceeded>(
             runtime.awaitImmediateQuiescence(4),
         )
+        assertEquals(4, limit.maximumEffects)
+        assertTrue(limit.processedEffects > 4)
         runtime.close(MeshFixtures.now)
     }
 
@@ -686,10 +689,11 @@ class MeshRuntimeAcknowledgementTest {
         assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
         executor.settled.await()
 
-        assertEquals(
-            RuntimeQuiescenceResult.LimitExceeded(2),
+        val limit = assertIs<RuntimeQuiescenceResult.LimitExceeded>(
             runtime.awaitImmediateQuiescence(2),
         )
+        assertEquals(2, limit.maximumEffects)
+        assertTrue(limit.processedEffects > 2)
         runtime.close(MeshFixtures.now)
     }
 

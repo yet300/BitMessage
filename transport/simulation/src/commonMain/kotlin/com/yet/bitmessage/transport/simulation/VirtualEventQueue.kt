@@ -24,9 +24,16 @@ class VirtualEventQueue<T>(
 
     val size: Int get() = scheduled.size
 
+    /** Preflight for a caller that will insert [count] entries without interleaving other queue mutations. */
+    internal fun insertionFailure(count: Int): QueueScheduleResult? {
+        require(count >= 0)
+        if (Long.MAX_VALUE - nextSequence < count.toLong()) return QueueScheduleResult.SequenceExhausted
+        if (count > capacity - scheduled.size) return QueueScheduleResult.Full
+        return null
+    }
+
     fun schedule(deadline: MonotonicTime, value: T): QueueScheduleResult {
-        if (nextSequence == Long.MAX_VALUE) return QueueScheduleResult.SequenceExhausted
-        if (scheduled.size >= capacity) return QueueScheduleResult.Full
+        insertionFailure(1)?.let { return it }
 
         val sequence = nextSequence++
         val entry = ScheduledEvent(ScheduledEventId(sequence), deadline, sequence, value)
@@ -38,6 +45,8 @@ class VirtualEventQueue<T>(
     }
 
     fun peek(): ScheduledEvent<T>? = scheduled.firstOrNull()
+
+    internal fun contains(id: ScheduledEventId): Boolean = scheduled.any { it.id == id }
 
     /** Does not move virtual time or consume a past/future deadline. */
     fun removeNextDue(now: MonotonicTime): ScheduledEvent<T>? =

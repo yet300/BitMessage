@@ -57,6 +57,7 @@ sealed interface RuntimeQuiescenceResult {
 
     data class LimitExceeded(
         val maximumEffects: Int,
+        val processedEffects: Long,
     ) : RuntimeQuiescenceResult
 }
 
@@ -265,7 +266,10 @@ class MeshRuntime(
                 val processedSinceLastFence = processedEffects - initialProcessedEffects
                 if (processedSinceLastFence > maxProcessedEffects.toLong()) {
                     context.lastReportedProcessedEffects = processedEffects
-                    return@withLock RuntimeQuiescenceResult.LimitExceeded(maxProcessedEffects)
+                    return@withLock RuntimeQuiescenceResult.LimitExceeded(
+                        maxProcessedEffects,
+                        processedSinceLastFence,
+                    )
                 }
                 if (processedEffects == registeredEffects) {
                     context.lastReportedProcessedEffects = processedEffects

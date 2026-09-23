@@ -19,7 +19,7 @@
 ### Execution record (2026-09-05)
 
 - Tasks 1 and 2 are implemented and reviewed. SHA-256 coverage includes independently checked algorithm vectors at padding boundaries, binary input, and one million `a` bytes; packet fixtures remain codec-derived and non-normative.
-- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is in progress; simulator scenarios have not started.
+- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 has passed specification and quality review: current-time quiescence, explicit advancement, predicate-bounded execution, real-node scheduling, and 12 focused quiescence tests pass on Android host and iOS Simulator ARM64. Task 9 substrate scenarios have not started.
 - Execute Tasks 4 and 5 before Task 3: Task 3's `FireRuntimeTimer` references `MeshTimerKey`, which Task 5 introduces. Do not create a temporary duplicate key type.
 - Task 3 follows the plan's five initial event variants. Design 2 additionally names scheduled scenario actions: add a closed scenario-action event when that action type has a concrete consumer, and keep timed actions on the single global queue. `MESH_EVENT` is packet-network work because delayed digest/verification results can continue admission and relay; convergence must still inspect packet relevance and current-vs-future deadline rather than category alone.
 - Run focused `testAndroidHostTest --tests ...` commands separately from the unfiltered `meshEngineCheck`/`allTests` invocation. Combining the filter with the gate suppresses the required coverage anchor after the gate cleans its XML results.
@@ -1404,12 +1404,14 @@ rtk git commit -m "feat: add real simulated mesh nodes"
 
 ## Task 8: Implement network scheduling and exact quiescence
 
+Implementation note: a runtime causal-fence limit reports the actual effect count already processed, so simulator event diagnostics remain exact even on limit exit. Scheduled events targeting a suspended runtime are recorded as rejected observations rather than resource-limit failures; `stop/start` is suspension/restart, not a new security epoch. A timer replacement may reclaim a full queue slot only while its prior event is still queued. These cases are covered by the Task 8 implementation and quiescence tests.
+
 **Files:**
 - Create: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulatedNetwork.kt`
 - Create: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulationSnapshot.kt`
 - Create: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/SimulationQuiescenceTest.kt`
 
-- [ ] **Step 1: Write current-instant quiescence tests first.**
+- [x] **Step 1: Write current-instant quiescence tests first.**
 
 ```kotlin
 class SimulationQuiescenceTest {
@@ -1455,7 +1457,7 @@ class SimulationQuiescenceTest {
 }
 ```
 
-- [ ] **Step 2: Run and prove network APIs are absent.**
+- [x] **Step 2: Run and prove network APIs are absent.**
 
 ```bash
 rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*SimulationQuiescenceTest' --console=plain
@@ -1463,7 +1465,7 @@ rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*SimulationQuie
 
 Expected: compilation fails for `SimulatedNetwork`, snapshots, and run results.
 
-- [ ] **Step 3: Add immutable snapshots and outcomes.**
+- [x] **Step 3: Add immutable snapshots and outcomes.**
 
 ```kotlin
 data class PendingEventProjection(
@@ -1512,13 +1514,13 @@ sealed interface RunUntilResult {
 
 All lists are stable-ID sorted defensive snapshots. Pending events expose metadata only, never callback closures or payload bytes.
 
-- [ ] **Step 4: Implement the network-owned timer driver.**
+- [x] **Step 4: Implement the network-owned timer driver.**
 
 For each node, `NetworkTimerDriver` implements `MeshTimerDriver`. `schedule` inserts `SimulationEvent.FireRuntimeTimer(nodeId, key)` at the exact deadline and stores the request callback in a bounded map keyed by `(nodeId, key)`. Rescheduling cancels/removes the previous queue entry before insertion. `cancel` removes both queue entry and callback. `cancelAll` removes every callback/event for that node. Firing removes the registration before invoking `onElapsed`.
 
 The event queue remains the only future virtual-time authority. Runtime mailboxes/effects remain internal.
 
-- [ ] **Step 5: Implement node/topology lifecycle and effect-host methods.**
+- [x] **Step 5: Implement node/topology lifecycle and effect-host methods.**
 
 `SimulatedNetwork` constructor launches nothing. `addNode` validates node capacity and uniqueness, creates its runtime with a network timer driver, starts it at `now`, and acknowledges start. `connect` validates direction capacity, creates two directions, schedules `LinkEvent.Opened` observations at `now` in stable order, and returns the connection.
 
@@ -1528,7 +1530,7 @@ Loss suppresses delivery but may still return `Written`; duplication schedules e
 
 `MeshRuntime` converts non-cancellation effect-provider exceptions into `EffectFailed`, so the host must latch the first simulator-limit failure from scheduling, writes, closes, and publication routing before throwing it. Quiescence and snapshot/predicate evaluation must rethrow that latched failure after immediate effects settle; a scenario must never appear successful because `MeshEngine` ignored an `EffectFailed`. `BoundedPublications` already keeps overflow sticky. Add an integration test that exceeds a host limit through a real runtime effect and proves the simulator reports the failure.
 
-- [ ] **Step 6: Implement current-time drainage without future advancement.**
+- [x] **Step 6: Implement current-time drainage without future advancement.**
 
 ```kotlin
 suspend fun runCurrentUntilQuiescent(
@@ -1556,7 +1558,7 @@ suspend fun runCurrentUntilQuiescent(
 
 `removeNextDue(now)` removes one event whose deadline equals `now`. It never removes a future event. Dispatch uses `submitAndAwait`; structural rejection is traced and produces no mesh-state admission.
 
-- [ ] **Step 7: Implement explicit advancement and predicate-bounded execution.**
+- [x] **Step 7: Implement explicit advancement and predicate-bounded execution.**
 
 `advanceTo(target)` rejects backwards time, repeatedly sets `now` to the next queued deadline only when it is `<= target`, calls current-time quiescence, then sets `now = target` and drains once. `advanceBy` validates and uses checked `MonotonicTime.plus`.
 
@@ -1582,7 +1584,7 @@ while (true) {
 
 Do not add `runUntilIdle` or automatic expiry drainage.
 
-- [ ] **Step 8: Run quiescence and complete simulation tests.**
+- [x] **Step 8: Run quiescence and complete simulation tests.**
 
 ```bash
 rtk ./gradlew \

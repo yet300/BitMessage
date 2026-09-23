@@ -8,6 +8,7 @@ enum class TraceCategory {
     SCHEDULED,
     PAYLOAD_DELIVERED,
     DECODE_REJECTED,
+    ASYNC_RESULT,
     LINK_OBSERVED,
     TIMER_FIRED,
     FAULT_APPLIED,

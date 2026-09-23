@@ -20,7 +20,7 @@ internal interface SimulationEffectHost {
 
     suspend fun submitClose(nodeId: SimulatedNodeId, command: LinkCommand.Close)
 
-    fun recordPublication(nodeId: SimulatedNodeId, effect: MeshEffect.PublishPublicPayload)
+    suspend fun recordPublication(nodeId: SimulatedNodeId, effect: MeshEffect.PublishPublicPayload)
 }
 
 internal class SimulationEffectExecutor(
