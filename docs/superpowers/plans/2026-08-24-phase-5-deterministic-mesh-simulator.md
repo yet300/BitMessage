@@ -19,7 +19,7 @@
 ### Execution record (2026-09-05)
 
 - Tasks 1 and 2 are implemented and reviewed. SHA-256 coverage includes independently checked algorithm vectors at padding boundaries, binary input, and one million `a` bytes; packet fixtures remain codec-derived and non-normative.
-- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 has passed specification and quality review: current-time quiescence, explicit advancement, predicate-bounded execution, real-node scheduling, and 12 focused quiescence tests pass on Android host and iOS Simulator ARM64. Task 9 substrate scenarios have not started.
+- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is committed at `e93994a` after specification and quality review: current-time quiescence, explicit advancement, predicate-bounded execution, real-node scheduling, and 12 focused quiescence tests pass on Android host and iOS Simulator ARM64. Task 9 passed final specification and quality review with 18 substrate tests and 55 total simulation tests per target; Task 10 mesh scenarios have not started.
 - Execute Tasks 4 and 5 before Task 3: Task 3's `FireRuntimeTimer` references `MeshTimerKey`, which Task 5 introduces. Do not create a temporary duplicate key type.
 - Task 3 follows the plan's five initial event variants. Design 2 additionally names scheduled scenario actions: add a closed scenario-action event when that action type has a concrete consumer, and keep timed actions on the single global queue. `MESH_EVENT` is packet-network work because delayed digest/verification results can continue admission and relay; convergence must still inspect packet relevance and current-vs-future deadline rather than category alone.
 - Run focused `testAndroidHostTest --tests ...` commands separately from the unfiltered `meshEngineCheck`/`allTests` invocation. Combining the filter with the gate suppresses the required coverage anchor after the gate cleans its XML results.
@@ -1605,11 +1605,13 @@ rtk git commit -m "feat: add deterministic network quiescence"
 
 ## Task 9: Prove the simulation substrate before mesh scenarios
 
+Implementation note: the Task 8 network paths already handled the new link/fault cases, so the new Task 9 tests passed without a red transition or extra fault-policy rewrite. The queue-overflow case starts with two free slots and attempts a three-copy write, comparing redacted diagnostics before/after; a fatal simulator limit intentionally prevents a normal snapshot afterward. A bounded `LinkCompletionProjection` records the typed, correlated result only after the source runtime acknowledges it, enabling a real B-to-C relay to prove `Backpressured` and `Failed` completions without inventing a logical send API.
+
 **Files:**
 - Modify: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/SimulationSubstrateTest.kt`
 - Modify: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/SimulationQuiescenceTest.kt`
 
-- [ ] **Step 1: Add exact behavioral tests for the substrate.**
+- [x] **Step 1: Add exact behavioral tests for the substrate.**
 
 Implement these complete test cases using `testNetwork(backgroundScope)` and recorded delivery projections:
 
@@ -1641,19 +1643,19 @@ The equal-deadline case compares explicit delivery sequence IDs, not map iterati
 
 The malformed-payload case records B's `MeshState`, delivers `Bytes.copyOf(byteArrayOf())` through A-to-B, drains current-time consequences, then asserts exact state equality, zero pending admissions, one additional structural-decode rejection, and no publication/relay/write. This test proves failed structural decode never enters `MeshState`.
 
-- [ ] **Step 2: Run tests and observe failures in incomplete fault transitions.**
+- [x] **Step 2: Run tests and inspect fault transitions.**
 
 ```bash
 rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*SimulationSubstrateTest' --console=plain
 ```
 
-Expected: newly added cases fail until all link/fault paths update topology, runtime observations, traces, and queue reservations atomically.
+Observed: Task 8 already implemented the fault paths; new cases passed, then assertions were tightened during review for exact packet order, runtime observations, queue atomicity, and typed completions.
 
-- [ ] **Step 3: Implement only missing substrate behavior.**
+- [x] **Step 3: Implement only missing substrate behavior.**
 
 Reserve all queue capacity required by one write before mutating ordinals, consuming a one-shot fault, or scheduling any event. Apply timed faults through `SimulationEvent.ApplyLinkFault`; schedule their events during network initialization in `(deadline, plan order)` sequence. A partition changes only its explicit directions and schedules matching `ReadinessChanged` or `Closed` observations. Reconnect increments checked link epoch and emits a new deterministic endpoint lifecycle; it does not reuse a stale callback.
 
-- [ ] **Step 4: Run Android and iOS substrate suites.**
+- [x] **Step 4: Run Android and iOS substrate suites.**
 
 ```bash
 rtk ./gradlew :transport:simulation:allTests --console=plain

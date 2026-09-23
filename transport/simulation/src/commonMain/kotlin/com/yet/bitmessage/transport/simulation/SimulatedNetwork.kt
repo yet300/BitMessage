@@ -48,6 +48,7 @@ class SimulatedNetwork(
     private val consumedTransmissionSelectors = mutableSetOf<TransmissionSelector>()
     private val appliedTimedFaultIds = mutableSetOf<String>()
     private val deliveries = mutableListOf<DeliveryProjection>()
+    private val linkCompletions = mutableListOf<LinkCompletionProjection>()
     private val trace = BoundedSimulationTrace(limits.maxTraceRecords)
     private var traceSequence = 0L
     private var fatalLimit: SimulationLimitExceededException? = null
@@ -149,9 +150,21 @@ class SimulatedNetwork(
         connection
     }
 
-    suspend fun stopNode(id: SimulatedNodeId): StopResult = requireNode(id).stop(now)
+    suspend fun stopNode(id: SimulatedNodeId): StopResult {
+        val node = mutex.withLock {
+            checkNotClosed()
+            requireNode(id)
+        }
+        return node.stop(now)
+    }
 
-    suspend fun startNode(id: SimulatedNodeId): StartResult = requireNode(id).start(now)
+    suspend fun startNode(id: SimulatedNodeId): StartResult {
+        val node = mutex.withLock {
+            checkNotClosed()
+            requireNode(id)
+        }
+        return node.start(now)
+    }
 
     /** An external transport write; unlike a runtime-originated write, it has no completion event. */
     suspend fun injectTransportWrite(directionId: SimulatedLinkId, bytes: Bytes): DirectedWriteDecision =
@@ -289,6 +302,7 @@ class SimulatedNetwork(
                 nodes.values.sortedBy { it.config.id },
                 directions.values.sortedBy { it.id },
                 deliveries.toList(),
+                linkCompletions.toList(),
                 queue.entries().map { pendingProjection(it) },
                 FaultCursor(
                     consumedTransmissionSelectors.sortedWith(
@@ -309,6 +323,7 @@ class SimulatedNetwork(
             directions = captured.directions,
             publications = nodeSnapshots.flatMap { it.publications },
             deliveries = captured.deliveries,
+            linkCompletions = captured.completions,
             pendingEvents = captured.pending,
             faultCursor = captured.cursor,
             trace = captured.trace,
@@ -450,6 +465,17 @@ class SimulatedNetwork(
             is SimulationEvent.DeliverMeshEvent -> {
                 if (!requireAcceptedOrStopped(requireNode(event.targetNode).runtime.submitAndAwait(event.event))) {
                     recordTrace(TraceCategory.ASYNC_RESULT, TraceOutcome.REJECTED, event.targetNode)
+                } else if (event.event is MeshEvent.LinkCompleted) {
+                    mutex.withLock {
+                        if (linkCompletions.size >= limits.maxCompletionRecords) {
+                            failLimit("Simulation completion-record limit exceeded.")
+                        }
+                        linkCompletions += LinkCompletionProjection(
+                            event.targetNode,
+                            event.event.observedAt,
+                            event.event.result,
+                        )
+                    }
                 }
             }
             is SimulationEvent.ObserveLink -> {
@@ -649,6 +675,10 @@ class SimulatedNetwork(
             LinkResult.Backpressured(command.linkId, command.correlationId, command.generation)
         DirectedWriteDecision.Disconnected ->
             LinkResult.Disconnected(command.linkId, command.correlationId, command.generation)
+        DirectedWriteDecision.Unsupported ->
+            LinkResult.Unsupported(command.linkId, command.correlationId, command.generation)
+        is DirectedWriteDecision.Failed ->
+            LinkResult.Failed(command.linkId, command.correlationId, command.generation, code)
         is DirectedWriteDecision.PayloadTooLarge ->
             LinkResult.PayloadTooLarge(command.linkId, command.correlationId, command.generation, maximumBytes)
     }
@@ -656,8 +686,8 @@ class SimulatedNetwork(
     private fun PlannedLinkResult.toDecision(): DirectedWriteDecision = when (this) {
         PlannedLinkResult.Backpressured -> DirectedWriteDecision.Backpressured
         PlannedLinkResult.Disconnected -> DirectedWriteDecision.Disconnected
-        PlannedLinkResult.Unsupported -> DirectedWriteDecision.Backpressured
-        is PlannedLinkResult.Failed -> DirectedWriteDecision.Backpressured
+        PlannedLinkResult.Unsupported -> DirectedWriteDecision.Unsupported
+        is PlannedLinkResult.Failed -> DirectedWriteDecision.Failed(code)
     }
 
     private fun PlannedLinkResult.toLinkResult(command: LinkCommand.Write): LinkResult = when (this) {
@@ -675,6 +705,7 @@ class SimulatedNetwork(
         LinkCapabilities(direction.mtu, direction.writeReady && direction.open)
 
     private fun checkNotClosed() {
+        throwIfFatal()
         check(!closed) { "Simulation network is closed." }
     }
 
@@ -732,7 +763,8 @@ class SimulatedNetwork(
         }
     }
 
-    private suspend fun diagnostics(): SimulationDiagnostics = mutex.withLock { diagnosticsLocked() }
+    /** Redacted diagnostics remain readable after a sticky simulator limit failure. */
+    suspend fun diagnostics(): SimulationDiagnostics = mutex.withLock { diagnosticsLocked() }
 
     private fun diagnosticsLocked(): SimulationDiagnostics =
         SimulationDiagnostics(now, processed, queue.size, trace.records().takeLast(64))
@@ -754,6 +786,7 @@ class SimulatedNetwork(
         val nodes: List<SimulatedNode>,
         val directions: List<DirectedSimulatedLink>,
         val deliveries: List<DeliveryProjection>,
+        val completions: List<LinkCompletionProjection>,
         val pending: List<PendingEventProjection>,
         val cursor: FaultCursor,
         val trace: List<SimulationTraceRecord>,

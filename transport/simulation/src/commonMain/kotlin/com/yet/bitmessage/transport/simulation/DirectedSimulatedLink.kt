@@ -1,6 +1,7 @@
 package com.yet.bitmessage.transport.simulation
 
 import com.yet.bitmessage.model.LinkId
+import com.yet.bitmessage.transport.api.LinkFailureCode
 import kotlin.time.Duration
 
 data class SimulatedEndpoint(
@@ -12,6 +13,8 @@ sealed interface DirectedWriteDecision {
     data object Accepted : DirectedWriteDecision
     data object Backpressured : DirectedWriteDecision
     data object Disconnected : DirectedWriteDecision
+    data object Unsupported : DirectedWriteDecision
+    data class Failed(val code: LinkFailureCode) : DirectedWriteDecision
     data class PayloadTooLarge(val maximumBytes: Int) : DirectedWriteDecision
 }
 

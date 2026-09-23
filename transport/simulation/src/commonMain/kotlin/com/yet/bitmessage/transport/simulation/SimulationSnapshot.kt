@@ -2,6 +2,7 @@ package com.yet.bitmessage.transport.simulation
 
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.protocol.bitchat.PacketId
+import com.yet.bitmessage.transport.api.LinkResult
 import kotlin.time.Duration
 
 data class PendingEventProjection(
@@ -27,6 +28,13 @@ data class DeliveryProjection(
     val packetClassification: String,
 )
 
+/** A metadata-only record of a correlated write result accepted by its source runtime. */
+data class LinkCompletionProjection(
+    val nodeId: SimulatedNodeId,
+    val observedAt: MonotonicTime,
+    val result: LinkResult,
+)
+
 data class FaultCursor(
     val consumedTransmissionSelectors: List<TransmissionSelector> = emptyList(),
     val appliedTimedFaultIds: List<String> = emptyList(),
@@ -39,6 +47,7 @@ data class SimulationSnapshot(
     val directions: List<DirectedSimulatedLink>,
     val publications: List<PublicationProjection>,
     val deliveries: List<DeliveryProjection>,
+    val linkCompletions: List<LinkCompletionProjection>,
     val pendingEvents: List<PendingEventProjection>,
     val faultCursor: FaultCursor,
     val trace: List<SimulationTraceRecord>,

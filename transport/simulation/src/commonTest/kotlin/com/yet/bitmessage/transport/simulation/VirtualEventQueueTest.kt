@@ -86,6 +86,7 @@ class VirtualEventQueueTest {
             { valid.copy(maxTraceRecords = 0) },
             { valid.copy(maxPublicationRecords = 0) },
             { valid.copy(maxDeliveryRecords = 0) },
+            { valid.copy(maxCompletionRecords = 0) },
             { valid.copy(maxProcessedEvents = 0) },
             { valid.copy(maxVirtualDuration = kotlin.time.Duration.ZERO) },
             { valid.copy(maxVirtualDuration = kotlin.time.Duration.INFINITE) },

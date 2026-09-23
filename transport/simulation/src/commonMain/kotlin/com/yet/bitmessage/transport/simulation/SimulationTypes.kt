@@ -39,13 +39,15 @@ data class SimulationLimits(
     val maxTraceRecords: Int = 8_192,
     val maxPublicationRecords: Int = 1_024,
     val maxDeliveryRecords: Int = 8_192,
+    val maxCompletionRecords: Int = 8_192,
     val maxProcessedEvents: Int = 100_000,
     val maxVirtualDuration: Duration = 10.minutes,
 ) {
     init {
         require(maxNodes > 0 && maxDirectedLinks > 0 && maxScheduledEvents > 0)
         require(maxFaultActions > 0 && maxTraceRecords > 0)
-        require(maxPublicationRecords > 0 && maxDeliveryRecords > 0 && maxProcessedEvents > 0)
+        require(maxPublicationRecords > 0 && maxDeliveryRecords > 0 && maxCompletionRecords > 0 &&
+            maxProcessedEvents > 0)
         require(maxVirtualDuration.isFinite() && maxVirtualDuration > Duration.ZERO)
     }
 }
