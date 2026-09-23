@@ -12,21 +12,19 @@ import com.yet.bitmessage.foundation.Generation
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.foundation.TraceRecord
 import com.yet.bitmessage.foundation.Transition
-import com.yet.bitmessage.foundation.TimerId
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
 import com.yet.bitmessage.protocol.bitchat.DecodeError
 import com.yet.bitmessage.transport.api.LinkEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,6 +79,7 @@ class MeshRuntime(
     private val executor: MeshEffectExecutor,
     private val parentScope: CoroutineScope,
     private val limits: MeshLimits,
+    private val timerDriverFactory: MeshTimerDriverFactory = CoroutineMeshTimerDriver.Factory,
 ) {
     private val lifecycleMutex = Mutex()
     private val mutableState = MutableStateFlow<MeshState?>(null)
@@ -401,12 +400,19 @@ class MeshRuntime(
         return StopResult.Stopped
     }
 
-    private fun createRunContext(): RunContext {
+    private suspend fun createRunContext(): RunContext {
         val supervisor = SupervisorJob(parentScope.coroutineContext[Job])
         val scope = CoroutineScope(parentScope.coroutineContext + supervisor)
+        val timerDriver = try {
+            timerDriverFactory.create(scope)
+        } catch (failure: Throwable) {
+            withContext(NonCancellable) { supervisor.cancelAndJoin() }
+            throw failure
+        }
         return RunContext(
             supervisor = supervisor,
             scope = scope,
+            timerDriver = timerDriver,
             external = Channel(limits.eventMailboxCapacity),
             effects = Channel(limits.effectQueueCapacity),
             results = Channel(Channel.RENDEZVOUS),
@@ -433,11 +439,11 @@ class MeshRuntime(
     }
 
     private suspend fun terminateContextJobs(context: RunContext) {
-        val timerJobs = context.timerMutex.withLock {
-            context.timers.values.toList().also { context.timers.clear() }
+        try {
+            context.timerDriver.cancelAll()
+        } finally {
+            context.supervisor.cancelAndJoin()
         }
-        timerJobs.forEach(Job::cancel)
-        context.supervisor.cancelAndJoin()
     }
 
     private fun closeContextChannels(context: RunContext) {
@@ -867,43 +873,43 @@ class MeshRuntime(
         envelope: EffectEnvelope,
         effect: MeshEffect.Schedule,
     ) {
-        val key = TimerKey(effect.correlationId.value, effect.timerId)
-        lateinit var timerJob: Job
-        timerJob = context.scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                delay(effect.delay)
-                context.results.send(
-                    MeshEvent.TimerElapsed(
-                        correlationId = effect.correlationId,
-                        generation = effect.generation,
-                        observedAt = envelope.observedAt.plus(effect.delay),
-                        timerId = effect.timerId,
-                    ),
-                )
-            } finally {
-                withContext(NonCancellable) {
-                    context.timerMutex.withLock {
-                        if (context.timers[key] === timerJob) context.timers.remove(key)
+        val deadline = envelope.observedAt.plus(effect.delay)
+        context.timerDriver.schedule(
+            MeshTimerRequest(
+                key = MeshTimerKey(effect.correlationId, effect.timerId),
+                generation = effect.generation,
+                observedAt = envelope.observedAt,
+                deadline = deadline,
+                onElapsed = elapsed@{
+                    if (!context.supervisor.isActive) return@elapsed
+                    try {
+                        context.results.send(
+                            MeshEvent.TimerElapsed(
+                                correlationId = effect.correlationId,
+                                generation = effect.generation,
+                                observedAt = deadline,
+                                timerId = effect.timerId,
+                            ),
+                        )
+                    } catch (_: ClosedSendChannelException) {
+                        // A non-coroutine driver may race a stale callback with run teardown.
                     }
-                }
-            }
-        }
-        val previous = context.timerMutex.withLock { context.timers.put(key, timerJob) }
-        previous?.cancel()
-        timerJob.start()
+                },
+            ),
+        )
     }
 
     private suspend fun cancelTimer(
         context: RunContext,
         effect: MeshEffect.Cancel,
     ) {
-        val key = TimerKey(effect.correlationId.value, effect.timerId)
-        context.timerMutex.withLock { context.timers.remove(key) }?.cancel()
+        context.timerDriver.cancel(MeshTimerKey(effect.correlationId, effect.timerId))
     }
 
     private class RunContext(
         val supervisor: Job,
         val scope: CoroutineScope,
+        val timerDriver: MeshTimerDriver,
         val external: Channel<ExternalEnvelope>,
         val effects: Channel<EffectCommand>,
         val results: Channel<MeshEvent>,
@@ -912,8 +918,6 @@ class MeshRuntime(
         val controls: Channel<ActorCommand>,
         val traces: Channel<TraceRecord>,
     ) {
-        val timerMutex = Mutex()
-        val timers = mutableMapOf<TimerKey, Job>()
         val fenceMutex = Mutex()
         var registeredEffects: Long = 0
         var processedEffects: Long = 0
@@ -1007,11 +1011,6 @@ class MeshRuntime(
     private data class EffectEnvelope(
         val effect: MeshEffect,
         val observedAt: MonotonicTime,
-    )
-
-    private data class TimerKey(
-        val correlationValue: String,
-        val timerId: TimerId,
     )
 
     private class PendingEffectCapacityExceededException(
