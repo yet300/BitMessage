@@ -179,14 +179,15 @@ class MeshPropertyTest {
         assertTrue(state.pendingLinkWrites.size <= limits.maxActiveLinks, context)
         assertEquals(
             state.pendingLinkWrites.values.size,
-            state.pendingLinkWrites.values.toSet().size,
+            state.pendingLinkWrites.values.map(PendingLinkWrite::linkId).toSet().size,
             context,
         )
         assertTrue(transition.effects.size <= limits.effectQueueCapacity, context)
         transition.effects.filterIsInstance<MeshEffect.RequestEntropy>().forEach { request ->
-            assertTrue(request.packet.ttl >= 2u, context)
+            val packet = requireNotNull(state.pendingRelayEntropy[request.correlationId]).packet
+            assertTrue(packet.ttl >= 2u, context)
             assertEquals(
-                minOf(request.packet.ttl.toInt(), RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1,
+                minOf(packet.ttl.toInt(), RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1,
                 request.outgoingTtl.toInt(),
                 context,
             )
@@ -324,7 +325,6 @@ class MeshPropertyTest {
                     observedAt = tick(),
                     packetId = effect.packetId,
                     source = effect.source,
-                    packet = effect.packet,
                     outgoingTtl = effect.outgoingTtl,
                     result = MeshResult.Success(
                         if (random.nextInt(8) == 0) {

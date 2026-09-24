@@ -104,7 +104,6 @@ sealed interface MeshEvent {
         override val observedAt: MonotonicTime,
         val packetId: PacketId,
         val source: PacketSource,
-        val packet: DecodedPacket,
         val outgoingTtl: UByte,
         val result: MeshResult<Bytes>,
     ) : MeshAsyncEvent

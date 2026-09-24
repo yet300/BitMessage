@@ -596,7 +596,6 @@ private fun admissionConsequences(
                         generation = state.generation,
                         packetId = packetId,
                         source = pending.source,
-                        packet = pending.packet,
                         outgoingTtl = outgoingTtl,
                     )
                 }

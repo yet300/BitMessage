@@ -366,7 +366,6 @@ class MeshRuntimeTest {
                     observedAt = MeshFixtures.now,
                     packetId = effect.packetId,
                     source = effect.source,
-                    packet = effect.packet,
                     outgoingTtl = effect.outgoingTtl,
                     result = MeshResult.Success(Bytes.copyOf(byteArrayOf(0))),
                 )

@@ -76,7 +76,6 @@ internal class SimulationEffectExecutor(
             observedAt = host.now,
             packetId = effect.packetId,
             source = effect.source,
-            packet = effect.packet,
             outgoingTtl = effect.outgoingTtl,
             result = MeshResult.Success(
                 entropy.generate(EntropyRequest(effect.correlationId, effect.byteCount)).bytes,

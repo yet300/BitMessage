@@ -168,7 +168,7 @@ class SimulationEntropyTest {
         )
         assertEquals(RelayEncoding.withTtl(packet, 2u), assertIs<MeshEvent.RelayEncoded>(executor.execute(relay)).result)
         val entropyRequest = MeshEffect.RequestEntropy(
-            CorrelationId.of("entropy:1"), Generation(3), packetId, source, packet, 2u,
+            CorrelationId.of("entropy:1"), Generation(3), packetId, source, 2u,
         )
         val entropyEvent = assertIs<MeshEvent.EntropyProvided>(executor.execute(entropyRequest))
         assertEquals(entropy.transcript.single().bytes, assertIs<MeshResult.Success<Bytes>>(entropyEvent.result).value)

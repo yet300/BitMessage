@@ -60,7 +60,6 @@ sealed interface MeshEffect {
         override val generation: Generation,
         val packetId: PacketId,
         val source: PacketSource,
-        val packet: DecodedPacket,
         val outgoingTtl: UByte,
         val byteCount: Int = RELAY_ENTROPY_BYTES,
     ) : MeshEffect {

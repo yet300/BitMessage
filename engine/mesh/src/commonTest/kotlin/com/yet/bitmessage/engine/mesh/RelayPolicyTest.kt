@@ -523,6 +523,31 @@ class RelayPolicyTest {
     }
 
     @Test
+    fun manySmallPacketsStopAtBudgetAndExpiryReleasesIt() {
+        val packet = packetWithTtl(3u)
+        val size = packet.rawPacket.wireBytes.size
+        val limits = MeshLimits(maxAggregateRelayRetainedBytes = size * 3)
+        val engine = MeshEngine(limits)
+        var state = readyStateWithRelayLink(engine)
+        repeat(6) { index ->
+            val digest = Bytes.copyOf(ByteArray(32) { index.toByte() })
+            val admitted = admitUnsigned(engine, state, packet, digestBytes = digest)
+            state = admitted.state
+            assertTrue(state.aggregateRelayRetainedBytes <= limits.maxAggregateRelayRetainedBytes)
+            assertEquals(1, admitted.effects.filterIsInstance<MeshEffect.PublishPublicPayload>().size)
+            assertEquals(if (index < 3) 1 else 0, admitted.effects.filterIsInstance<MeshEffect.RequestEntropy>().size)
+        }
+        assertEquals(size * 3, state.aggregateRelayRetainedBytes)
+        val expired = state.prepareForCapacity(MeshFixtures.now.plus(5.minutes))
+        assertEquals(0, expired.aggregateRelayRetainedBytes)
+        val reused = admitUnsigned(
+            engine, expired, packet, observedAt = MeshFixtures.now.plus(5.minutes),
+            digestBytes = Bytes.copyOf(ByteArray(32) { 99.toByte() }),
+        )
+        assertEquals(size, reused.state.aggregateRelayRetainedBytes)
+    }
+
+    @Test
     fun relayRetentionAccountingTransfersAcrossEntropyScheduleAndEncode() {
         val engine = MeshEngine()
         val packet = packetWithTtl(3u)
@@ -740,7 +765,6 @@ class RelayPolicyTest {
             observedAt = MeshFixtures.now,
             packetId = request.packetId,
             source = request.source,
-            packet = request.packet,
             outgoingTtl = request.outgoingTtl,
             result = MeshResult.Success(value),
         )

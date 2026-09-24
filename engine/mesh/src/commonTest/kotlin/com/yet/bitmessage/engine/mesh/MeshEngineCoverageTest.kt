@@ -65,7 +65,6 @@ class MeshEngineCoverageTest {
                 observedAt = MeshFixtures.now,
                 packetId = entropy.packetId,
                 source = entropy.source,
-                packet = entropy.packet,
                 outgoingTtl = entropy.outgoingTtl,
                 result = MeshResult.Success(bytes("0000")),
             ),

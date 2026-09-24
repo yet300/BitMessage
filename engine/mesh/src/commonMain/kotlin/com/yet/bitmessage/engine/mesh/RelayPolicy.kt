@@ -90,7 +90,6 @@ internal fun reduceEntropy(
     if (request == null ||
         request.packetId != event.packetId ||
         request.source != event.source ||
-        request.packet != event.packet ||
         request.outgoingTtl != event.outgoingTtl ||
         !prepared.admittedPackets.containsKey(request.packetId) ||
         prepared.scheduledRelays.containsKey(request.packetId)
