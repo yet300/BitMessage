@@ -164,7 +164,21 @@ class SimulatedNetwork(
             checkNotClosed()
             requireNode(id)
         }
-        return node.start(now)
+        val result = node.start(now)
+        if (result == StartResult.Started) {
+            mutex.withLock {
+                val openDirections = directions.values.filter { it.source.nodeId == id && it.open }
+                    .sortedBy { it.id }
+                requireQueueSpaceLocked(openDirections.size)
+                openDirections.forEach { direction ->
+                    scheduleLocked(now, SimulationEvent.ObserveLink(
+                        id,
+                        LinkEvent.Opened(direction.source.linkId, capabilities(direction)),
+                    ))
+                }
+            }
+        }
+        return result
     }
 
     /** An external transport write; unlike a runtime-originated write, it has no completion event. */

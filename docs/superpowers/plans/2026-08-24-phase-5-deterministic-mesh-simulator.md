@@ -19,7 +19,7 @@
 ### Execution record (2026-09-05)
 
 - Tasks 1 and 2 are implemented and reviewed. SHA-256 coverage includes independently checked algorithm vectors at padding boundaries, binary input, and one million `a` bytes; packet fixtures remain codec-derived and non-normative.
-- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is committed at `e93994a` after specification and quality review. Task 9 is committed at `7723c71` after final specification and quality review, with 18 substrate tests and 55 total simulation tests per target. Task 10's direct, three-node relay, and canonical Android scenarios pass the simulation, production compatibility, and mesh gates; Tasks 11–15 remain.
+- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is committed at `e93994a` after specification and quality review. Task 9 is committed at `7723c71` after final specification and quality review, with 18 substrate tests and 55 total simulation tests per target. Task 10 is committed at `7d51c05` with direct, three-node relay, and canonical Android scenarios. Task 11 is committed at `4469a34` with duplicate, TTL, and invalid-auth scenarios. Task 12's partition, stale-generation, and backpressure scenarios pass on Android and iOS; Tasks 13–15 remain.
 - Execute Tasks 4 and 5 before Task 3: Task 3's `FireRuntimeTimer` references `MeshTimerKey`, which Task 5 introduces. Do not create a temporary duplicate key type.
 - Task 3 follows the plan's five initial event variants. Design 2 additionally names scheduled scenario actions: add a closed scenario-action event when that action type has a concrete consumer, and keep timed actions on the single global queue. `MESH_EVENT` is packet-network work because delayed digest/verification results can continue admission and relay; convergence must still inspect packet relevance and current-vs-future deadline rather than category alone.
 - Run focused `testAndroidHostTest --tests ...` commands separately from the unfiltered `meshEngineCheck`/`allTests` invocation. Combining the filter with the gate suppresses the required coverage anchor after the gate cleans its XML results.
@@ -1904,11 +1904,13 @@ rtk git commit -m "test: prove mesh admission invariants across nodes"
 
 ## Task 12: Prove partitions, reconnect generations, and backpressure
 
+Implementation note: restart creates a real new `MeshRuntime` generation and schedules fresh `Opened` observations for physically open outgoing directions in stable ID order. Already-scheduled transport completions retain their old correlation and generation; the mesh reducer ignores them after restart. No payload lost during partition is replayed on healing.
+
 **Files:**
 - Create: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/PartitionAndBackpressureScenarioTest.kt`
 - Modify: `transport/simulation/src/commonMain/kotlin/com/yet/bitmessage/transport/simulation/SimulatedNetwork.kt`
 
-- [ ] **Step 1: Write partition and no-fake-retry tests.**
+- [x] **Step 1: Write partition and no-fake-retry tests.**
 
 ```kotlin
 @Test
@@ -1929,7 +1931,7 @@ fun partitionPreventsImpossibleDeliveryAndHealingDoesNotReplayLostTraffic() = ru
 }
 ```
 
-- [ ] **Step 2: Write stale old-generation completion test.**
+- [x] **Step 2: Write stale old-generation completion test.**
 
 Arrange a real B relay write with link latency long enough that its correlated `LinkCompleted` remains scheduled. Stop B before its deadline, restart B to get `oldGeneration.next()`, reopen its links, then advance to the old result:
 
@@ -1944,11 +1946,11 @@ assertTrue(network.snapshot().trace.any {
 
 The event carries the real `CorrelationId` and `Generation` captured from the original `LinkCommand.Write`. Do not invent a parallel mesh generation.
 
-- [ ] **Step 3: Write backpressure/failure tests.**
+- [x] **Step 3: Write backpressure/failure tests.**
 
 Cover `ReadinessChanged(writeReady = false)`, explicit `TransmissionFault.CompleteWith(BACKPRESSURED)`, `FAILED`, and queue capacity overflow. Assert the real runtime receives `MeshEvent.LinkCompleted` with the typed `LinkResult`, resolves `pendingLinkWrites` once, emits no delivery, creates no hidden simulator queue, and does not retry.
 
-- [ ] **Step 4: Run and prove incomplete lifecycle paths fail.**
+- [x] **Step 4: Run and prove incomplete lifecycle paths fail.**
 
 ```bash
 rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*PartitionAndBackpressureScenarioTest' --console=plain
@@ -1956,13 +1958,13 @@ rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*PartitionAndBa
 
 Expected: new tests fail until stop/restart event cancellation, new endpoint observation, and stale completion delivery are correctly distinguished.
 
-- [ ] **Step 5: Implement exact lifecycle handling.**
+- [x] **Step 5: Implement exact lifecycle handling.**
 
 `SimulatedNetwork.stopNode` calls the real runtime stop and cancels only runtime-owned timers through its timer driver. It does not erase already scheduled transport completions, because those are required to test stale generation. `restartNode` starts the same runtime, obtains the next real generation, and emits fresh link observations for currently open endpoint connections. Old delivery/completion events retain original generation/correlation and are never rewritten.
 
 Partitions and readiness affect future writes only. No lost payload is retained for later healing.
 
-- [ ] **Step 6: Run complete simulation and mesh suites.**
+- [x] **Step 6: Run complete simulation and mesh suites.**
 
 ```bash
 rtk ./gradlew \
