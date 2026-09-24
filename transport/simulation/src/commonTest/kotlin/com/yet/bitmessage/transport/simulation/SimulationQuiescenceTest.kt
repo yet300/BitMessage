@@ -3,6 +3,8 @@ package com.yet.bitmessage.transport.simulation
 import com.yet.bitmessage.foundation.Bytes
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
+import com.yet.bitmessage.protocol.bitchat.BitchatCodec
+import com.yet.bitmessage.protocol.bitchat.EncodeResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +16,34 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class SimulationQuiescenceTest {
+    @Test
+    fun nodeSnapshotsExposeBoundedEntropyHistoryAcrossRuns() = runTest {
+        suspend fun replay(): SimulatedNodeSnapshot {
+            val network = twoNodeNetwork(limits = SimulationLimits(
+                maxEntropyTranscriptRecords = 2,
+                maxEntropyTranscriptBytes = 4,
+            ))
+            try {
+                repeat(4) { index ->
+                    val packet = SimulationFixtures.messagePacket().copy(timestamp = (index + 1).toULong())
+                    val wire = assertIs<EncodeResult.Success>(BitchatCodec.encode(packet)).bytes
+                    network.injectTransportWrite(SimulatedLinkId.of("ab:a-to-b"), wire)
+                    assertIs<QuiescenceResult.Quiescent>(network.advanceBy(100.milliseconds))
+                    assertTrue(network.snapshot().node(nodeB).entropyTranscript.size <= 2)
+                }
+                return network.snapshot().node(nodeB)
+            } finally {
+                network.close()
+            }
+        }
+        val first = replay()
+        val second = replay()
+        assertEquals(2, first.entropyTranscript.size)
+        assertEquals(2L, first.entropyTranscriptDroppedCount)
+        assertEquals(first.entropyTranscript, second.entropyTranscript)
+        assertEquals(first.entropyTranscriptDroppedCount, second.entropyTranscriptDroppedCount)
+    }
+
     @Test
     fun currentQuiescenceDrainsDeliveryButLeavesMaintenanceTimersQueued() = runTest {
         val network = twoNodeNetwork()
