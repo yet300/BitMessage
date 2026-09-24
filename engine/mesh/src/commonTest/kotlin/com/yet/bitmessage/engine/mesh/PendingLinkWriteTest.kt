@@ -1,12 +1,16 @@
 package com.yet.bitmessage.engine.mesh
 
 import com.yet.bitmessage.foundation.CorrelationId
+import com.yet.bitmessage.engine.mesh.runtime.MeshEffectExecutor
+import com.yet.bitmessage.engine.mesh.runtime.executeEffect
 import com.yet.bitmessage.foundation.Generation
 import com.yet.bitmessage.foundation.TimerId
+import com.yet.bitmessage.transport.api.LinkCommand
 import com.yet.bitmessage.transport.api.LinkEvent
 import com.yet.bitmessage.transport.api.LinkCloseReason
 import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkResult
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -21,6 +25,18 @@ class PendingLinkWriteTest {
         links = SnapshotMap(mapOf(MeshFixtures.linkB to ActiveLink(LinkCapabilities(4096, true), MeshFixtures.now))),
         pendingLinkWrites = SnapshotMap(mapOf(correlation to PendingLinkWrite(MeshFixtures.linkB, timeout, expiry))),
     )
+
+    @Test
+    fun thrownWriteExecutorFailureSettlesTheLiveLink() = runTest {
+        val state = pendingState()
+        val write = MeshEffect.WriteLink(LinkCommand.Write(
+            MeshFixtures.linkB, correlation, MeshFixtures.generation, MeshFixtures.bytes("0102"),
+        ))
+        val failure = executeEffect(MeshEffectExecutor { throw IllegalStateException("failed write") }, write, MeshFixtures.now)
+        val result = MeshEngine().reduce(state, requireNotNull(failure))
+        assertTrue(result.state.pendingLinkWrites.isEmpty())
+        assertTrue(result.state.links[MeshFixtures.linkB]?.capabilities?.writeReady == true)
+    }
 
     @Test
     fun executionFailureSettlesItsCorrelatedWrite() {
