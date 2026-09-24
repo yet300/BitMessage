@@ -75,6 +75,31 @@ class DirectAndRelayScenarioTest {
     }
 
     @Test
+    fun duplicateBeforeJitterDeadlineCancelsScheduledRelayAcrossNodes() = runTest {
+        val network = lineNetwork(includeC = true)
+        val wire = SimulationFixtures.messagePacket(ttl = 3u).rawPacket.wireBytes
+        network.injectTransportWrite(ab, wire)
+        val scheduled = assertIs<RunUntilResult.Reached>(network.runUntil(
+            predicate = { it.node(b).state.scheduledRelays.isNotEmpty() },
+            maxProcessedEvents = 5_000,
+            maxVirtualDuration = 5.seconds,
+        )).snapshot
+        assertTrue(scheduled.node(c).publications.isEmpty())
+
+        network.injectTransportWrite(ab, wire)
+        val cancelled = assertIs<RunUntilResult.Reached>(network.runUntil(
+            predicate = { snapshot -> snapshot.deliveries.count { it.targetNode == b } == 2 &&
+                snapshot.node(b).state.scheduledRelays.isEmpty() },
+            maxProcessedEvents = 5_000,
+            maxVirtualDuration = 5.seconds,
+        )).snapshot
+        assertEquals(1, cancelled.node(b).publications.size)
+        network.advanceBy(1.seconds)
+        assertTrue(network.snapshot().node(c).publications.isEmpty())
+        network.close()
+    }
+
+    @Test
     fun ttlZeroAndOnePublishLocallyWithoutRelayAndHostileValueUsesLocalCap() = runTest {
         for (ttl in listOf(0u.toUByte(), 1u.toUByte())) {
             val network = lineNetwork(includeC = true)
