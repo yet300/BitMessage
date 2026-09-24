@@ -14,6 +14,7 @@ enum class ScheduledCategory(val isPacketNetworkWork: Boolean) {
     LINK_OBSERVATION(false),
     RUNTIME_TIMER(false),
     LINK_FAULT(false),
+    SCENARIO_ACTION(true),
 }
 
 internal sealed interface SimulationEvent {
@@ -65,5 +66,9 @@ internal sealed interface SimulationEvent {
 
     data class ApplyLinkFault(val actionId: String) : SimulationEvent {
         override val category: ScheduledCategory = ScheduledCategory.LINK_FAULT
+    }
+
+    data class ApplyScenarioAction(val action: ScenarioAction) : SimulationEvent {
+        override val category: ScheduledCategory = ScheduledCategory.SCENARIO_ACTION
     }
 }

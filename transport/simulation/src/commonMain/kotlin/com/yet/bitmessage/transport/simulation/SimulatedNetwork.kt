@@ -185,6 +185,16 @@ class SimulatedNetwork(
     suspend fun injectTransportWrite(directionId: SimulatedLinkId, bytes: Bytes): DirectedWriteDecision =
         submitTransmission(null, null, bytes, null, directionId)
 
+    /** Enqueue the entire explicit plan before execution; no second timed-action queue exists. */
+    suspend fun scheduleScenarioActions(actions: List<ScenarioAction>) {
+        mutex.withLock {
+            checkNotClosed()
+            require(actions.all { it.at >= now }) { "Scenario action is in the past." }
+            requireQueueSpaceLocked(actions.size)
+            actions.forEach { scheduleLocked(it.at, SimulationEvent.ApplyScenarioAction(it)) }
+        }
+    }
+
     suspend fun runCurrentUntilQuiescent(
         maxProcessedEvents: Int = limits.maxProcessedEvents,
     ): QuiescenceResult {
@@ -516,6 +526,11 @@ class SimulatedNetwork(
                 recordTrace(TraceCategory.TIMER_FIRED, TraceOutcome.COMPLETED, event.targetNode)
             }
             is SimulationEvent.ApplyLinkFault -> applyTimedFault(event.actionId)
+            is SimulationEvent.ApplyScenarioAction -> when (val action = event.action) {
+                is ScenarioAction.Inject -> injectTransportWrite(action.directionId, action.wire)
+                is ScenarioAction.Stop -> stopNode(action.nodeId)
+                is ScenarioAction.Start -> startNode(action.nodeId)
+            }
         }
     }
 
@@ -665,6 +680,11 @@ class SimulatedNetwork(
             is SimulationEvent.ObserveLink -> event.targetNode
             is SimulationEvent.FireRuntimeTimer -> event.targetNode
             is SimulationEvent.ApplyLinkFault -> null
+            is SimulationEvent.ApplyScenarioAction -> when (val action = event.action) {
+                is ScenarioAction.Inject -> null
+                is ScenarioAction.Stop -> action.nodeId
+                is ScenarioAction.Start -> action.nodeId
+            }
         }
         return PendingEventProjection(
             id = entry.id,
@@ -672,7 +692,11 @@ class SimulatedNetwork(
             sequence = entry.sequence,
             category = event.category,
             nodeId = node,
-            linkId = (event as? SimulationEvent.DeliverPayload)?.directionId,
+            linkId = when (event) {
+                is SimulationEvent.DeliverPayload -> event.directionId
+                is SimulationEvent.ApplyScenarioAction -> (event.action as? ScenarioAction.Inject)?.directionId
+                else -> null
+            },
             packetId = (event as? SimulationEvent.DeliverPayload)?.packetId,
         )
     }
