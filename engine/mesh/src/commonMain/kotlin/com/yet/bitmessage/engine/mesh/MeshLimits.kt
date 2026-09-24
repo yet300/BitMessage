@@ -14,6 +14,8 @@ data class MeshLimits(
     val maxAggregatePendingBytes: Int = 4 * 1024 * 1024,
     /** BitMessage local memory policy for full packets retained in the relay pipeline. */
     val maxAggregateRelayRetainedBytes: Int = 4 * 1024 * 1024,
+    /** BitMessage local combined cap across pending admission and relay state. */
+    val maxAggregateRetainedPacketBytes: Int = 8 * 1024 * 1024,
     val pendingAdmissionLifetime: Duration = 15.seconds,
     val linkWriteLifetime: Duration = 15.seconds,
     val maxAdmittedPacketIds: Int = 10_000,
@@ -44,6 +46,7 @@ data class MeshLimits(
             maxPendingPacketBytes,
             maxAggregatePendingBytes,
             maxAggregateRelayRetainedBytes,
+            maxAggregateRetainedPacketBytes,
             maxAdmittedPacketIds,
             maxFragmentStreams,
             maxFragmentStreamsPerSource,
@@ -83,6 +86,9 @@ data class MeshLimits(
         }
         require(maxAggregatePendingBytes >= maxPendingPacketBytes) {
             "Aggregate pending bytes cannot be smaller than one pending packet."
+        }
+        require(maxAggregateRetainedPacketBytes >= maxAggregatePendingBytes) {
+            "Combined retained packet bytes must reserve the pending-admission budget."
         }
         require(maxFragmentStreamsPerSource <= maxFragmentStreams) {
             "Per-source fragment streams cannot exceed the global limit."

@@ -534,6 +534,8 @@ class RelayPolicyTest {
             val admitted = admitUnsigned(engine, state, packet, digestBytes = digest)
             state = admitted.state
             assertTrue(state.aggregateRelayRetainedBytes <= limits.maxAggregateRelayRetainedBytes)
+            assertEquals(state.aggregatePendingBytes + state.aggregateRelayRetainedBytes, state.aggregateRetainedPacketBytes)
+            assertTrue(state.aggregateRetainedPacketBytes <= limits.maxAggregateRetainedPacketBytes)
             assertEquals(1, admitted.effects.filterIsInstance<MeshEffect.PublishPublicPayload>().size)
             assertEquals(if (index < 3) 1 else 0, admitted.effects.filterIsInstance<MeshEffect.RequestEntropy>().size)
         }

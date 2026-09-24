@@ -49,7 +49,8 @@ internal fun reduceDecoded(
         prepared.pendingAdmissions.size >= limits.maxPendingAdmissions ||
         prepared.pendingAdmissions.values.count { it.source.ingressLink == event.source.ingressLink } >=
         limits.maxPendingAdmissionsPerLink ||
-        prepared.aggregatePendingBytes.toLong() + retainedBytes > limits.maxAggregatePendingBytes.toLong()
+        prepared.aggregatePendingBytes.toLong() + retainedBytes > limits.maxAggregatePendingBytes.toLong() ||
+        prepared.aggregateRetainedPacketBytes.toLong() + retainedBytes > limits.maxAggregateRetainedPacketBytes.toLong()
     ) {
         return limitReached(prepared, correlationId = null, inputBytes = retainedBytes)
     }
@@ -575,7 +576,8 @@ private fun admissionConsequences(
                     updated.pendingRelayEncodes.values.any { it.packetId == packetId }
                 val retainedBytes = pending.packet.rawPacket.wireBytes.size
                 if (!alreadyPending &&
-                    retainedBytes <= limits.maxAggregateRelayRetainedBytes - updated.aggregateRelayRetainedBytes
+                    retainedBytes <= limits.maxAggregateRelayRetainedBytes - updated.aggregateRelayRetainedBytes &&
+                    retainedBytes <= limits.maxAggregateRetainedPacketBytes - updated.aggregateRetainedPacketBytes
                 ) {
                     val entropy = updated.issueCorrelation(MeshOperation.REQUEST_ENTROPY)
                     val requests = entropy.state.pendingRelayEntropy.toMutableMap().apply {

@@ -210,6 +210,9 @@ data class MeshState(
                 pendingRelayEncodes.values.map { it.packet.rawPacket.wireBytes.size },
         )
 
+    val aggregateRetainedPacketBytes: Int
+        get() = checkedByteTotal(listOf(aggregatePendingBytes, aggregateRelayRetainedBytes))
+
     init {
         require(aggregatePendingBytes >= 0) { "Aggregate pending bytes must not be negative." }
         require(aggregateFragmentBytes >= 0) { "Aggregate fragment bytes must not be negative." }
@@ -224,6 +227,7 @@ data class MeshState(
             "Aggregate fragment bytes must match fragment stream state."
         }
         aggregateRelayRetainedBytes // Validate the derived aggregate on every state construction.
+        aggregateRetainedPacketBytes
     }
 }
 
