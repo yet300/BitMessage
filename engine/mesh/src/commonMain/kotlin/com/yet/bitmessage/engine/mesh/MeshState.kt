@@ -167,6 +167,12 @@ data class PendingRelayEncode(
     val expiresAt: MonotonicTime,
 )
 
+data class PendingLinkWrite(
+    val linkId: LinkId,
+    val timeoutTimerId: TimerId,
+    val expiresAt: MonotonicTime,
+)
+
 data class ExpiryTimer(
     val correlationId: CorrelationId,
     val timerId: TimerId,
@@ -188,7 +194,7 @@ data class MeshState(
     val scheduledRelays: SnapshotMap<PacketId, ScheduledRelay> = SnapshotMap(),
     val pendingRelayEntropy: SnapshotMap<CorrelationId, PendingRelayEntropy> = SnapshotMap(),
     val pendingRelayEncodes: SnapshotMap<CorrelationId, PendingRelayEncode> = SnapshotMap(),
-    val pendingLinkWrites: SnapshotMap<CorrelationId, LinkId> = SnapshotMap(),
+    val pendingLinkWrites: SnapshotMap<CorrelationId, PendingLinkWrite> = SnapshotMap(),
     val dedupExpiryTimer: ExpiryTimer? = null,
     val topologyExpiryTimer: ExpiryTimer? = null,
     val aggregatePendingBytes: Int = 0,
@@ -199,7 +205,7 @@ data class MeshState(
         require(aggregatePendingBytes >= 0) { "Aggregate pending bytes must not be negative." }
         require(aggregateFragmentBytes >= 0) { "Aggregate fragment bytes must not be negative." }
         require(nextCorrelationSequence >= 0) { "Correlation sequence must not be negative." }
-        require(pendingLinkWrites.values.size == pendingLinkWrites.values.toSet().size) {
+        require(pendingLinkWrites.values.map(PendingLinkWrite::linkId).distinct().size == pendingLinkWrites.size) {
             "At most one link write may be outstanding per link."
         }
         require(aggregatePendingBytes == checkedByteTotal(pendingAdmissions.values.map(PendingAdmission::retainedBytes))) {

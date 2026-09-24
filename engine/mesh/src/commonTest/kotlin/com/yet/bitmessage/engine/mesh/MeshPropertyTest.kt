@@ -68,8 +68,8 @@ class MeshPropertyTest {
             MeshFixtures.state().copy(
                 pendingLinkWrites = SnapshotMap(
                     mapOf(
-                        CorrelationId.of("mesh:3:write:0") to MeshFixtures.linkA,
-                        CorrelationId.of("mesh:3:write:1") to MeshFixtures.linkA,
+                        CorrelationId.of("mesh:3:write:0") to PendingLinkWrite(MeshFixtures.linkA, com.yet.bitmessage.foundation.TimerId.of("t0"), MeshFixtures.now),
+                        CorrelationId.of("mesh:3:write:1") to PendingLinkWrite(MeshFixtures.linkA, com.yet.bitmessage.foundation.TimerId.of("t1"), MeshFixtures.now),
                     ),
                 ),
             )

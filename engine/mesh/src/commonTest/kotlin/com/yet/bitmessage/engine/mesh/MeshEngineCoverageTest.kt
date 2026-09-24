@@ -108,7 +108,7 @@ class MeshEngineCoverageTest {
             ),
         )
 
-        assertTrue(completed.effects.isEmpty())
+        assertEquals(1, completed.effects.filterIsInstance<MeshEffect.Cancel>().size)
         assertTrue(completed.state.pendingLinkWrites.isEmpty())
         val relayedPacket = assertIs<DecodeResult.Success<DecodedPacket>>(
             BitchatCodec.decode(write.command.bytes),

@@ -216,6 +216,7 @@ internal fun reduceRelayTimerOrNull(
 internal fun reduceRelayEncoded(
     state: MeshState,
     event: MeshEvent.RelayEncoded,
+    limits: MeshLimits,
 ): Transition<MeshState, MeshEffect> {
     if (event.generation != state.generation || state.lifecycle != MeshLifecycle.RUNNING) {
         return ignoredRelay(state, event.correlationId, stale = event.generation != state.generation)
@@ -238,13 +239,15 @@ internal fun reduceRelayEncoded(
     val effects = mutableListOf<MeshEffect>()
     event.targets.forEach { linkId ->
         if (RelayPolicy.isEligible(updated, linkId, bytes.size) &&
-            linkId !in updated.pendingLinkWrites.values
+            updated.pendingLinkWrites.values.none { it.linkId == linkId }
         ) {
             val issued = updated.issueCorrelation(MeshOperation.LINK_WRITE)
+            val timeoutTimerId = TimerId.of("${issued.correlationId.value}:write-timeout")
             val pendingWrites = issued.state.pendingLinkWrites.toMutableMap().apply {
-                put(issued.correlationId, linkId)
+                put(issued.correlationId, PendingLinkWrite(linkId, timeoutTimerId, event.observedAt.plus(limits.linkWriteLifetime)))
             }
             updated = issued.state.copy(pendingLinkWrites = SnapshotMap(pendingWrites))
+            effects += MeshEffect.Schedule(issued.correlationId, state.generation, timeoutTimerId, limits.linkWriteLifetime)
             effects += MeshEffect.WriteLink(
                 LinkCommand.Write(
                     linkId = linkId,
@@ -278,7 +281,7 @@ internal fun reduceLinkResult(
         return ignoredRelay(state, event.correlationId, stale = event.generation != state.generation)
     }
     val pendingLink = state.pendingLinkWrites[event.correlationId]
-    if (pendingLink == null || pendingLink != event.result.linkId) {
+    if (pendingLink == null || pendingLink.linkId != event.result.linkId) {
         return ignoredRelay(state, event.correlationId, stale = false)
     }
     val pendingWrites = state.pendingLinkWrites.toMutableMap().apply {
@@ -298,6 +301,7 @@ internal fun reduceLinkResult(
             observedAt = event.observedAt,
             pendingLinkWrites = SnapshotMap(pendingWrites),
         ),
+        effects = listOf(MeshEffect.Cancel(event.correlationId, event.generation, pendingLink.timeoutTimerId)),
         trace = listOf(
             MeshTrace.record(MeshTraceTransition.LINK_RESULT, decision, event.correlationId),
         ),

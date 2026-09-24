@@ -13,6 +13,7 @@ data class MeshLimits(
     val maxPendingPacketBytes: Int = 128 * 1024,
     val maxAggregatePendingBytes: Int = 4 * 1024 * 1024,
     val pendingAdmissionLifetime: Duration = 15.seconds,
+    val linkWriteLifetime: Duration = 15.seconds,
     val maxAdmittedPacketIds: Int = 10_000,
     val dedupLifetime: Duration = 5.minutes,
     val maxFragmentStreams: Int = 64,
@@ -58,6 +59,7 @@ data class MeshLimits(
         requirePositiveFinite(
             listOf(
                 pendingAdmissionLifetime,
+                linkWriteLifetime,
                 dedupLifetime,
                 fragmentLifetime,
                 routeLifetime,
@@ -97,10 +99,10 @@ data class MeshLimits(
         require(maxRelayFanout <= maxActiveLinks) {
             "Relay fanout cannot exceed the active-link limit."
         }
-        require(maxRelayFanout <= Int.MAX_VALUE - FIXED_EFFECT_HEADROOM) {
+        require(maxRelayFanout <= (Int.MAX_VALUE - FIXED_EFFECT_HEADROOM) / 2) {
             "Relay fanout is too large to validate the effect queue safely."
         }
-        require(effectQueueCapacity >= maxRelayFanout + FIXED_EFFECT_HEADROOM) {
+        require(effectQueueCapacity >= maxOf(maxRelayFanout + FIXED_EFFECT_HEADROOM, 2 * maxRelayFanout)) {
             "Effect queue must hold one maximum-fanout transition."
         }
     }

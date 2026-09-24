@@ -333,7 +333,7 @@ class RelayPolicyTest {
             timerFired.state,
             relayEvent,
         )
-        val write = assertIs<MeshEffect.WriteLink>(relayEncoded.effects.single())
+        val write = relayEncoded.effects.filterIsInstance<MeshEffect.WriteLink>().single()
         assertEquals(MeshFixtures.linkB, write.command.linkId)
         assertEquals(2u.toUByte(), write.command.bytes[2])
 
@@ -350,7 +350,7 @@ class RelayPolicyTest {
                 ),
             ),
         )
-        assertTrue(completed.effects.isEmpty())
+        assertEquals(1, completed.effects.filterIsInstance<MeshEffect.Cancel>().size)
 
         val repeatedEncoding = engine.reduce(completed.state, relayEvent)
         assertTrue(repeatedEncoding.effects.isEmpty())
@@ -406,7 +406,7 @@ class RelayPolicyTest {
                     result = result,
                 ),
             )
-            assertTrue(completed.effects.isEmpty())
+            assertEquals(1, completed.effects.filterIsInstance<MeshEffect.Cancel>().size)
             assertEquals(
                 if (index == 0) TraceDecision.APPLIED else TraceDecision.REJECTED,
                 completed.trace.single().decision,

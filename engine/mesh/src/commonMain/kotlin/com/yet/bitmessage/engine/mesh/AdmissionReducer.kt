@@ -201,6 +201,19 @@ internal fun reduceTimer(
     }
     reduceFragmentTimerOrNull(state, event)?.let { return it }
     reduceRelayTimerOrNull(state, event)?.let { return it }
+    val write = state.pendingLinkWrites[event.correlationId]
+    if (write != null) {
+        if (write.timeoutTimerId != event.timerId || event.observedAt < write.expiresAt) {
+            return ignoredAdmission(state, event.correlationId, stale = false)
+        }
+        return Transition(
+            state = state.copy(
+                observedAt = event.observedAt,
+                pendingLinkWrites = SnapshotMap(state.pendingLinkWrites - event.correlationId),
+            ),
+            trace = listOf(MeshTrace.record(MeshTraceTransition.TIMER, TraceDecision.APPLIED, event.correlationId)),
+        )
+    }
     val pending = state.pendingAdmissions[event.correlationId]
     if (pending != null) {
         if (pending.timeoutTimerId != event.timerId || event.observedAt < pending.expiresAt) {
@@ -754,13 +767,16 @@ private fun reduceLinkClosed(
     val links = state.links.toMutableMap().apply { remove(linkEvent.linkId) }
     val bindings = state.provisionalBindings.filterValues { it.linkId != linkEvent.linkId }
     val routes = state.routeObservations.filterValues { it.ingressLink != linkEvent.linkId }
-    val pendingLinkWrites = state.pendingLinkWrites.filterValues { it != linkEvent.linkId }
+    val removedWrites = state.pendingLinkWrites.filterValues { it.linkId == linkEvent.linkId }
+    val pendingLinkWrites = state.pendingLinkWrites.filterValues { it.linkId != linkEvent.linkId }
     val effects = removedPending.map { (correlationId, pending) ->
         MeshEffect.Cancel(
             correlationId = correlationId,
             generation = event.generation,
             timerId = pending.timeoutTimerId,
         )
+    } + removedWrites.map { (correlationId, pending) ->
+        MeshEffect.Cancel(correlationId, event.generation, pending.timeoutTimerId)
     }
     return Transition(
         state = state.copy(

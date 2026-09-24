@@ -17,11 +17,11 @@ class MeshEngine(
             is MeshEvent.PacketDigestComputed -> reduceDigest(state, event, limits)
             is MeshEvent.SignatureVerified -> reduceSignature(state, event, limits)
             is MeshEvent.FragmentPayloadDecoded -> reduceFragmentDecoded(state, event, limits)
-            is MeshEvent.RelayEncoded -> reduceRelayEncoded(state, event)
+            is MeshEvent.RelayEncoded -> reduceRelayEncoded(state, event, limits)
             is MeshEvent.EntropyProvided -> reduceEntropy(state, event, limits)
             is MeshEvent.TimerElapsed -> reduceTimer(state, event)
             is MeshEvent.LinkCompleted -> reduceLinkResult(state, event)
-            is MeshEvent.EffectFailed -> ignoredResult(state, event)
+            is MeshEvent.EffectFailed -> reduceEffectFailure(state, event)
             is MeshEvent.RuntimeStarted -> reduceRuntimeStarted(state, event)
             is MeshEvent.RuntimeStopping -> reduceRuntimeStopping(state, event)
         }
@@ -44,6 +44,24 @@ class MeshEngine(
                 ),
             ),
         )
+
+    private fun reduceEffectFailure(
+        state: MeshState,
+        event: MeshEvent.EffectFailed,
+    ): Transition<MeshState, MeshEffect> {
+        if (event.generation != state.generation || state.lifecycle != MeshLifecycle.RUNNING) {
+            return ignoredResult(state, event)
+        }
+        val pending = state.pendingLinkWrites[event.correlationId] ?: return ignoredResult(state, event)
+        return Transition(
+            state = state.copy(
+                observedAt = event.observedAt,
+                pendingLinkWrites = SnapshotMap(state.pendingLinkWrites - event.correlationId),
+            ),
+            effects = listOf(MeshEffect.Cancel(event.correlationId, event.generation, pending.timeoutTimerId)),
+            trace = listOf(MeshTrace.record(MeshTraceTransition.EFFECT_FAILURE, TraceDecision.REJECTED, event.correlationId)),
+        )
+    }
 
     private fun reduceRuntimeStarted(
         state: MeshState,
