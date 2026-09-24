@@ -1,12 +1,26 @@
 package com.yet.bitmessage.protocol.bitchat
 
 import com.yet.bitmessage.testing.compatibility.FixtureManifestParser
+import com.yet.bitmessage.testing.compatibility.FixtureDecisionState
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ProductionFixtureCoverageTest {
+    @Test
+    fun blockedDecisionCannotBeCountedAsExecutedByFixtureId() {
+        val manifest = FixtureManifestParser.parse(resource("BitchatBaseline2026_08/fixtures.json"))
+        val executedId = ProductionFixtureCoverage.create(manifest).entries.first {
+            it.status == ProductionCoverageStatus.EXECUTED
+        }.fixtureId
+        val blocked = manifest.fixtures.single { it.id == executedId }.copy(
+            decisionState = FixtureDecisionState.BLOCKED_BY_PROTOCOL_DECISION,
+        )
+        val report = ProductionFixtureCoverage.create(manifest.copy(fixtures = listOf(blocked)))
+        assertEquals(ProductionCoverageStatus.BLOCKED, report.entries.single().status)
+    }
+
     @Test
     fun everyPhaseOneFixtureHasOneExplicitProductionCoverageStatus() {
         val manifest = FixtureManifestParser.parse(resource("BitchatBaseline2026_08/fixtures.json"))

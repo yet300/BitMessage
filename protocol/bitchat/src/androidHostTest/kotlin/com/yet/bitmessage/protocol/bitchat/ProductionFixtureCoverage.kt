@@ -42,9 +42,9 @@ internal object ProductionFixtureCoverage {
     }
 
     private fun classify(fixture: CompatibilityFixture): ProductionCoverageStatus = when {
-        fixture.id in EXECUTED_FIXTURES -> ProductionCoverageStatus.EXECUTED
         fixture.id in EVIDENCE_LAYOUT_CONFLICTS -> ProductionCoverageStatus.EVIDENCE_LAYOUT_CONFLICT
         fixture.decisionState == FixtureDecisionState.BLOCKED_BY_PROTOCOL_DECISION -> ProductionCoverageStatus.BLOCKED
+        fixture.id in EXECUTED_FIXTURES -> ProductionCoverageStatus.EXECUTED
         fixture.category in LATER_PHASE_CATEGORIES -> ProductionCoverageStatus.LATER_PHASE
         else -> ProductionCoverageStatus.METADATA_ONLY
     }

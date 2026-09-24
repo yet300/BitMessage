@@ -24,6 +24,7 @@ BitMessage/
 ├── iosApp/                     Native iOS application and Xcode project
 ├── sharedUI/                   Compose UI; currently configured for Android
 ├── sharedLogic/                Android/iOS shared application logic
+├── feature/root/               Shared root feature component
 ├── core/
 │   ├── common/                 Reusable Android/iOS common utilities
 │   ├── foundation/             Lowest-level multiplatform building blocks
@@ -52,7 +53,8 @@ BitMessage/
 | `:androidApp` | Android manifest, activity, packaging, and Android application entry point | Android; depends on `:sharedUI` |
 | `iosApp` | SwiftUI application entry point and Xcode configuration | iOS; imports the `SharedLogic` framework |
 | `:sharedUI` | Compose presentation code and resources | Currently Android only; depends on `:sharedLogic` |
-| `:sharedLogic` | Logic shared by Android and iOS and exported as `SharedLogic` | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:common` |
+| `:sharedLogic` | Logic shared by Android and iOS and exported as `SharedLogic` | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:common` and `:feature:root` |
+| `:feature:root` | Shared root feature component | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:common` |
 | `:core:common` | Reusable multiplatform utilities and infrastructure | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin |
 | `:core:foundation` | Lowest-level multiplatform building blocks | Android, iOS ARM64, iOS Simulator ARM64; configured by the local KMP convention plugin with no project dependency |
 | `:core:model` | Typed kernel models | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` |
@@ -67,7 +69,8 @@ Current dependency direction:
 
 ```text
 androidApp -> sharedUI -> sharedLogic -> core:common
-iosApp ----------------> sharedLogic -> core:common
+                                  \------> feature:root -> core:common
+iosApp ----------------> sharedLogic
 core:model -----------------------> core:foundation
 compatibility fixtures -----------> core:testing -> core:foundation
 protocol:bitchat -----------------> core:foundation, core:model
