@@ -548,6 +548,27 @@ class RelayPolicyTest {
     }
 
     @Test
+    fun defaultBudgetRejectsLargePacketFloodBeforeFourMiBIsRetained() {
+        val raw = assertIs<EncodeResult.Success>(BitchatCodec.encode(
+            MeshFixtures.broadcastPacket.copy(ttl = 3u, payload = Bytes.copyOf(ByteArray(32 * 1024))),
+        )).bytes
+        val packet = decode(raw)
+        val engine = MeshEngine()
+        var state = readyStateWithRelayLink(engine)
+        var skipped = 0
+        repeat(130) { index ->
+            val admitted = admitUnsigned(
+                engine, state, packet,
+                digestBytes = Bytes.copyOf(ByteArray(32) { index.toByte() }),
+            )
+            state = admitted.state
+            if (admitted.effects.none { it is MeshEffect.RequestEntropy }) skipped++
+            assertTrue(state.pendingRelayEntropy.values.sumOf { it.packet.rawPacket.wireBytes.size } <= 4 * 1024 * 1024)
+        }
+        assertTrue(skipped > 0)
+    }
+
+    @Test
     fun relayRetentionAccountingTransfersAcrossEntropyScheduleAndEncode() {
         val engine = MeshEngine()
         val packet = packetWithTtl(3u)
