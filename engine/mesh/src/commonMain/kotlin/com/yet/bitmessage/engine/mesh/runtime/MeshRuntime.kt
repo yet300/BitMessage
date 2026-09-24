@@ -470,6 +470,7 @@ class MeshRuntime(
         val maximumCausalWork = checkedCausalWorkCapacity(effectCapacity)
         var causalWork = 0L
         var inFlightEffects = 0L
+        var queuedRelayPacketBytes = 0L
         var stagedTransition: StagedTransition? = null
         var pendingLifecycleControl: ActorCommand.Reduce? = null
         var pendingControl: ActorCommand? = null
@@ -512,13 +513,18 @@ class MeshRuntime(
                     val required = staged.transition.effects.size
                     val replacement = if (staged.replacesCausalCredit) 1L else 0L
                     val nextCausalWork = causalWork - replacement + required.toLong()
+                    val transitionRelayBytes = staged.transition.effects.sumOf { effect ->
+                        if (effect is MeshEffect.EncodeRelay) effect.packet.rawPacket.wireBytes.size.toLong() else 0L
+                    }
                     if (
                         required <= effectCapacity - pendingEffects.size &&
-                        nextCausalWork <= maximumCausalWork
+                        nextCausalWork <= maximumCausalWork &&
+                        transitionRelayBytes <= limits.maxAggregateQueuedRelayPacketBytes.toLong() - queuedRelayPacketBytes
                     ) {
                         commitTransition(context, staged, pendingEffects)
                         causalWork = nextCausalWork
                         inFlightEffects += required.toLong()
+                        queuedRelayPacketBytes += transitionRelayBytes
                         stagedTransition = null
                         madeProgress = true
                     } else if (nextCausalWork > maximumCausalWork && inFlightEffects == 0L) {
@@ -526,6 +532,12 @@ class MeshRuntime(
                             required = required,
                             available = maximumCausalWork - (causalWork - replacement),
                             maximum = maximumCausalWork,
+                        )
+                        staged.acknowledged?.completeExceptionally(failure)
+                        throw failure
+                    } else if (transitionRelayBytes > limits.maxAggregateQueuedRelayPacketBytes) {
+                        val failure = IllegalStateException(
+                            "One transition exceeds the queued relay packet byte limit.",
                         )
                         staged.acknowledged?.completeExceptionally(failure)
                         throw failure
@@ -625,6 +637,8 @@ class MeshRuntime(
                 is ActorInput.Settlement -> {
                     check(inFlightEffects > 0L) { "Effect settled without an in-flight causal credit." }
                     inFlightEffects -= 1
+                    check(input.settlement.retainedRelayPacketBytes <= queuedRelayPacketBytes)
+                    queuedRelayPacketBytes -= input.settlement.retainedRelayPacketBytes
                     if (input.settlement.event == null) {
                         causalWork -= 1
                     } else {
@@ -762,7 +776,13 @@ class MeshRuntime(
                     }
                     val event = processEffect(context, command.envelope)
                     context.processedEffects += 1
-                    context.effectSettlements.send(EffectSettlement(event))
+                    context.effectSettlements.send(
+                        EffectSettlement(
+                            event,
+                            (command.envelope.effect as? MeshEffect.EncodeRelay)
+                                ?.packet?.rawPacket?.wireBytes?.size?.toLong() ?: 0L,
+                        ),
+                    )
                 }
                 is EffectCommand.Fence -> {
                     command.acknowledged.complete(context.processedEffects)
@@ -983,6 +1003,7 @@ class MeshRuntime(
 
     private data class EffectSettlement(
         val event: MeshEvent?,
+        val retainedRelayPacketBytes: Long,
     )
 
     private data class StagedEvent(

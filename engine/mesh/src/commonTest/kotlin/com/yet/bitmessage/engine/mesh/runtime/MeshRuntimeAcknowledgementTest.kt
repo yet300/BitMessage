@@ -8,6 +8,7 @@ import com.yet.bitmessage.engine.mesh.MeshLimits
 import com.yet.bitmessage.engine.mesh.MeshLifecycle
 import com.yet.bitmessage.engine.mesh.MeshResult
 import com.yet.bitmessage.engine.mesh.MeshState
+import com.yet.bitmessage.engine.mesh.SnapshotList
 import com.yet.bitmessage.foundation.Bytes
 import com.yet.bitmessage.foundation.CorrelationId
 import com.yet.bitmessage.foundation.Engine
@@ -36,6 +37,7 @@ import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -43,6 +45,52 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class MeshRuntimeAcknowledgementTest {
+    @Test
+    fun queuedRelayPacketByteBudgetWaitsForEarlierEncodeSettlement() = runTest {
+        val packet = MeshFixtures.broadcastPacket
+        val packetBytes = packet.rawPacket.wireBytes.size
+        val packetId = PacketId.of(Bytes.copyOf(ByteArray(16) { 7 }))
+        val delegate = MeshEngine()
+        var sequence = 0
+        val engine = object : Engine<MeshState, MeshEvent, MeshEffect> {
+            override fun reduce(state: MeshState, event: MeshEvent): Transition<MeshState, MeshEffect> =
+                if (event is MeshEvent.LinkObserved) {
+                    sequence++
+                    Transition(state, listOf(MeshEffect.EncodeRelay(
+                        CorrelationId.of("encode:$sequence"), state.generation, packetId,
+                        packet, 1u, SnapshotList(),
+                    )))
+                } else {
+                    delegate.reduce(state, event)
+                }
+        }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val executor = MeshEffectExecutor { effect ->
+            if (effect is MeshEffect.EncodeRelay && effect.correlationId.value == "encode:1") {
+                started.complete(Unit)
+                release.await()
+            }
+            null
+        }
+        val runtime = runtime(
+            engine, executor,
+            MeshLimits(maxPendingPacketBytes = packetBytes, maxAggregateQueuedRelayPacketBytes = packetBytes),
+        )
+        runtime.start(MeshFixtures.localPeer, MeshFixtures.now)
+        try {
+            assertEquals(SubmitResult.Accepted, runtime.submitAndAwait(opened(runtime.generation)))
+            started.await()
+            val waiting = backgroundScope.async { runtime.submitAndAwait(opened(runtime.generation)) }
+            testScheduler.runCurrent()
+            assertFalse(waiting.isCompleted)
+            release.complete(Unit)
+            assertEquals(SubmitResult.Accepted, waiting.await())
+        } finally {
+            runtime.close(MeshFixtures.now)
+        }
+    }
+
     @Test
     fun fastImmediateCycleCannotStarveAnEligibleFence() = runTest {
         val executor = FenceRaceExecutor()
