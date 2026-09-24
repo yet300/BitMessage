@@ -613,6 +613,52 @@ class RelayPolicyTest {
     }
 
     @Test
+    fun failedAndTimedOutWritesAllowLaterRelaysOnTheSameOpenLink() {
+        val engine = MeshEngine()
+        val packet = packetWithTtl(3u)
+
+        fun writeFrom(state: MeshState, digestByte: Byte): RelayWrite {
+            val admitted = admitUnsigned(
+                engine, state, packet,
+                digestBytes = Bytes.copyOf(ByteArray(32) { digestByte }),
+            )
+            val scheduled = engine.reduce(admitted.state, entropyResult(admitted.entropyRequest(), bytes("0000")))
+            val schedule = scheduled.effects.filterIsInstance<MeshEffect.Schedule>().single()
+            val due = engine.reduce(scheduled.state, MeshEvent.TimerElapsed(
+                schedule.correlationId, schedule.generation, MeshFixtures.now, schedule.timerId,
+            ))
+            val encode = due.effects.filterIsInstance<MeshEffect.EncodeRelay>().single()
+            val written = engine.reduce(due.state, MeshEvent.RelayEncoded(
+                encode.correlationId, encode.generation, MeshFixtures.now, encode.packetId,
+                encode.targets, RelayEncoding.withTtl(encode.packet, encode.outgoingTtl),
+            ))
+            return RelayWrite(written.state, written.effects.filterIsInstance<MeshEffect.WriteLink>().single())
+        }
+
+        val first = writeFrom(readyStateWithRelayLink(engine), 1)
+        val failed = engine.reduce(first.state, MeshEvent.EffectFailed(
+            first.write.command.correlationId, MeshFixtures.generation, MeshFixtures.now,
+            MeshFailureCode.EFFECT_EXECUTION_FAILED,
+        ))
+        assertTrue(failed.state.pendingLinkWrites.isEmpty())
+        assertTrue(failed.state.links[MeshFixtures.linkB]?.capabilities?.writeReady == true)
+
+        val second = writeFrom(failed.state, 2)
+        assertEquals(MeshFixtures.linkB, second.write.command.linkId)
+        val pending = second.state.pendingLinkWrites[second.write.command.correlationId]!!
+        val timedOut = engine.reduce(second.state, MeshEvent.TimerElapsed(
+            second.write.command.correlationId, MeshFixtures.generation, pending.expiresAt,
+            pending.timeoutTimerId,
+        ))
+        assertTrue(timedOut.state.pendingLinkWrites.isEmpty())
+
+        val third = writeFrom(timedOut.state, 3)
+        assertEquals(MeshFixtures.linkB, third.write.command.linkId)
+        assertTrue(third.write.command.correlationId != first.write.command.correlationId)
+        assertTrue(third.write.command.correlationId != second.write.command.correlationId)
+    }
+
+    @Test
     fun lateRelayTimerExecutesBeforeSemanticExpiryButNotAfterIt() {
         val engine = MeshEngine()
         val admitted = admitUnsigned(engine, readyStateWithRelayLink(engine), packetWithTtl(3u))

@@ -40,6 +40,8 @@ class SimulationQuiescenceTest {
         val second = replay()
         assertEquals(2, first.entropyTranscript.size)
         assertEquals(2L, first.entropyTranscriptDroppedCount)
+        assertEquals(first.state, second.state)
+        assertEquals(first.publications, second.publications)
         assertEquals(first.entropyTranscript, second.entropyTranscript)
         assertEquals(first.entropyTranscriptDroppedCount, second.entropyTranscriptDroppedCount)
     }
