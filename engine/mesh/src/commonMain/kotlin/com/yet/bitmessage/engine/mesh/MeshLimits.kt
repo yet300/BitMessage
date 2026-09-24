@@ -12,6 +12,8 @@ data class MeshLimits(
     val maxPendingAdmissionsPerLink: Int = 8,
     val maxPendingPacketBytes: Int = 128 * 1024,
     val maxAggregatePendingBytes: Int = 4 * 1024 * 1024,
+    /** BitMessage local memory policy for full packets retained in the relay pipeline. */
+    val maxAggregateRelayRetainedBytes: Int = 4 * 1024 * 1024,
     val pendingAdmissionLifetime: Duration = 15.seconds,
     val linkWriteLifetime: Duration = 15.seconds,
     val maxAdmittedPacketIds: Int = 10_000,
@@ -41,6 +43,7 @@ data class MeshLimits(
             maxPendingAdmissionsPerLink,
             maxPendingPacketBytes,
             maxAggregatePendingBytes,
+            maxAggregateRelayRetainedBytes,
             maxAdmittedPacketIds,
             maxFragmentStreams,
             maxFragmentStreamsPerSource,

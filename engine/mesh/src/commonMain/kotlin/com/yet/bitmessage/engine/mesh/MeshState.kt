@@ -163,6 +163,7 @@ data class PendingRelayEntropy(
 data class PendingRelayEncode(
     val packetId: PacketId,
     val sourcePeer: WirePeerId,
+    val packet: DecodedPacket,
     val targets: SnapshotList<LinkId>,
     val expiresAt: MonotonicTime,
 )
@@ -201,6 +202,13 @@ data class MeshState(
     val aggregateFragmentBytes: Int = 0,
     val nextCorrelationSequence: Long = 0,
 ) {
+    val aggregateRelayRetainedBytes: Int
+        get() = checkedByteTotal(
+            pendingRelayEntropy.values.map { it.packet.rawPacket.wireBytes.size } +
+                scheduledRelays.values.map { it.packet.rawPacket.wireBytes.size } +
+                pendingRelayEncodes.values.map { it.packet.rawPacket.wireBytes.size },
+        )
+
     init {
         require(aggregatePendingBytes >= 0) { "Aggregate pending bytes must not be negative." }
         require(aggregateFragmentBytes >= 0) { "Aggregate fragment bytes must not be negative." }
@@ -214,6 +222,7 @@ data class MeshState(
         require(aggregateFragmentBytes == checkedByteTotal(fragmentStreams.values.map(FragmentStream::retainedBytes))) {
             "Aggregate fragment bytes must match fragment stream state."
         }
+        aggregateRelayRetainedBytes // Validate the derived aggregate on every state construction.
     }
 }
 

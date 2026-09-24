@@ -185,6 +185,7 @@ internal fun reduceRelayTimerOrNull(
             PendingRelayEncode(
                 packetId = relay.packetId,
                 sourcePeer = relay.sourcePeer,
+                packet = relay.packet,
                 targets = relay.targets,
                 expiresAt = state.admittedPackets[relay.packetId]?.expiresAt ?: relay.expiresAt,
             ),

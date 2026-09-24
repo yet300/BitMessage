@@ -508,6 +508,43 @@ class RelayPolicyTest {
         assertTrue(rejected.effects.isEmpty())
     }
 
+    @Test
+    fun relayRetentionBudgetSkipsFurtherEntropyWithoutSuppressingLocalPublication() {
+        val packet = packetWithTtl(3u)
+        val size = packet.rawPacket.wireBytes.size
+        val engine = MeshEngine(MeshLimits(maxAggregateRelayRetainedBytes = size))
+        val first = admitUnsigned(engine, readyStateWithRelayLink(engine), packet)
+        assertEquals(size, first.state.aggregateRelayRetainedBytes)
+        assertEquals(1, first.effects.filterIsInstance<MeshEffect.RequestEntropy>().size)
+        val second = admitUnsigned(engine, first.state, packet, digestBytes = Bytes.copyOf(ByteArray(32) { 9 }))
+        assertEquals(size, second.state.aggregateRelayRetainedBytes)
+        assertTrue(second.effects.none { it is MeshEffect.RequestEntropy })
+        assertEquals(1, second.effects.filterIsInstance<MeshEffect.PublishPublicPayload>().size)
+    }
+
+    @Test
+    fun relayRetentionAccountingTransfersAcrossEntropyScheduleAndEncode() {
+        val engine = MeshEngine()
+        val packet = packetWithTtl(3u)
+        val size = packet.rawPacket.wireBytes.size
+        val admitted = admitUnsigned(engine, readyStateWithRelayLink(engine), packet)
+        val entropy = admitted.entropyRequest()
+        assertEquals(size, admitted.state.aggregateRelayRetainedBytes)
+        val scheduled = engine.reduce(admitted.state, entropyResult(entropy, bytes("0000")))
+        assertEquals(size, scheduled.state.aggregateRelayRetainedBytes)
+        val schedule = scheduled.effects.filterIsInstance<MeshEffect.Schedule>().single()
+        val due = engine.reduce(scheduled.state, MeshEvent.TimerElapsed(
+            schedule.correlationId, schedule.generation, MeshFixtures.now, schedule.timerId,
+        ))
+        assertEquals(size, due.state.aggregateRelayRetainedBytes)
+        val encode = due.effects.filterIsInstance<MeshEffect.EncodeRelay>().single()
+        val encoded = engine.reduce(due.state, MeshEvent.RelayEncoded(
+            encode.correlationId, encode.generation, MeshFixtures.now, encode.packetId,
+            encode.targets, RelayEncoding.withTtl(encode.packet, encode.outgoingTtl),
+        ))
+        assertEquals(0, encoded.state.aggregateRelayRetainedBytes)
+    }
+
     private data class RelayWrite(
         val state: MeshState,
         val write: MeshEffect.WriteLink,
@@ -630,6 +667,7 @@ class RelayPolicyTest {
         state: MeshState,
         packet: DecodedPacket,
         observedAt: MonotonicTime = MeshFixtures.now,
+        digestBytes: Bytes = sha256Digest,
     ): Transition<MeshState, MeshEffect> {
         val decoded = engine.reduce(
             state,
@@ -642,7 +680,7 @@ class RelayPolicyTest {
                 correlationId = digest.correlationId,
                 generation = MeshFixtures.generation,
                 observedAt = observedAt,
-                result = MeshResult.Success(sha256Digest),
+                result = MeshResult.Success(digestBytes),
             ),
         )
     }

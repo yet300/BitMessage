@@ -573,7 +573,10 @@ private fun admissionConsequences(
             RelayPolicy.outgoingTtl(pending.packet.ttl)?.let { outgoingTtl ->
                 val alreadyPending = updated.pendingRelayEntropy.values.any { it.packetId == packetId } ||
                     updated.pendingRelayEncodes.values.any { it.packetId == packetId }
-                if (!alreadyPending) {
+                val retainedBytes = pending.packet.rawPacket.wireBytes.size
+                if (!alreadyPending &&
+                    retainedBytes <= limits.maxAggregateRelayRetainedBytes - updated.aggregateRelayRetainedBytes
+                ) {
                     val entropy = updated.issueCorrelation(MeshOperation.REQUEST_ENTROPY)
                     val requests = entropy.state.pendingRelayEntropy.toMutableMap().apply {
                         put(
