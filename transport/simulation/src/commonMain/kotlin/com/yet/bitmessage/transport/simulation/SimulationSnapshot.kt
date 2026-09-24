@@ -2,6 +2,7 @@ package com.yet.bitmessage.transport.simulation
 
 import com.yet.bitmessage.foundation.MonotonicTime
 import com.yet.bitmessage.protocol.bitchat.PacketId
+import com.yet.bitmessage.foundation.Bytes
 import com.yet.bitmessage.transport.api.LinkResult
 import kotlin.time.Duration
 
@@ -26,6 +27,9 @@ data class DeliveryProjection(
     val packetId: PacketId?,
     val ttl: UByte?,
     val packetClassification: String,
+    val wireSha256: Bytes,
+    val signatureSha256: Bytes?,
+    val signingTranscriptSha256: Bytes?,
 )
 
 /** A metadata-only record of a correlated write result accepted by its source runtime. */

@@ -17,6 +17,7 @@ import com.yet.bitmessage.protocol.bitchat.BitchatCodec
 import com.yet.bitmessage.protocol.bitchat.DecodeResult
 import com.yet.bitmessage.protocol.bitchat.PacketId
 import com.yet.bitmessage.protocol.bitchat.PacketIdentity
+import com.yet.bitmessage.protocol.bitchat.SigningTranscript
 import com.yet.bitmessage.transport.api.LinkCapabilities
 import com.yet.bitmessage.transport.api.LinkCloseReason
 import com.yet.bitmessage.transport.api.LinkCommand
@@ -404,6 +405,9 @@ class SimulatedNetwork(
                 packetId = metadata.packetId,
                 ttl = metadata.ttl,
                 packetClassification = metadata.classification,
+                wireSha256 = metadata.wireSha256,
+                signatureSha256 = metadata.signatureSha256,
+                signingTranscriptSha256 = metadata.signingTranscriptSha256,
             ))
         }
         outcome
@@ -459,6 +463,9 @@ class SimulatedNetwork(
                         packetId = event.packetId,
                         ttl = event.ttl,
                         packetClassification = event.packetClassification,
+                        wireSha256 = event.wireSha256,
+                        signatureSha256 = event.signatureSha256,
+                        signingTranscriptSha256 = event.signingTranscriptSha256,
                     )
                 }
             }
@@ -658,13 +665,21 @@ class SimulatedNetwork(
 
     private fun packetMetadata(bytes: Bytes): PacketMetadata =
         when (val decoded = BitchatCodec.decode(bytes)) {
-            is DecodeResult.Failure -> PacketMetadata(null, null, "structurally-invalid")
+            is DecodeResult.Failure -> PacketMetadata(
+                null, null, "structurally-invalid", SimulationSha256.digest(bytes), null, null,
+            )
             is DecodeResult.Success -> {
                 val packet = decoded.value
+                val transcript = if (packet.signature != null) {
+                    (SigningTranscript.build(packet) as? DecodeResult.Success)?.value
+                } else null
                 PacketMetadata(
                     PacketIdentity.fromSha256(SimulationSha256.digest(PacketIdentity.input(packet).canonicalBytes)),
                     packet.ttl,
                     packet.type.value.toString(),
+                    SimulationSha256.digest(bytes),
+                    packet.signature?.let(SimulationSha256::digest),
+                    transcript?.let(SimulationSha256::digest),
                 )
             }
         }
@@ -781,7 +796,14 @@ class SimulatedNetwork(
         val request: MeshTimerRequest,
         val owner: NetworkTimerDriver,
     )
-    private data class PacketMetadata(val packetId: PacketId?, val ttl: UByte?, val classification: String)
+    private data class PacketMetadata(
+        val packetId: PacketId?,
+        val ttl: UByte?,
+        val classification: String,
+        val wireSha256: Bytes,
+        val signatureSha256: Bytes?,
+        val signingTranscriptSha256: Bytes?,
+    )
     private data class SnapshotParts(
         val nodes: List<SimulatedNode>,
         val directions: List<DirectedSimulatedLink>,

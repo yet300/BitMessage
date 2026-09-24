@@ -29,6 +29,9 @@ internal sealed interface SimulationEvent {
         val packetId: PacketId?,
         val ttl: UByte?,
         val packetClassification: String,
+        val wireSha256: Bytes,
+        val signatureSha256: Bytes?,
+        val signingTranscriptSha256: Bytes?,
     ) : SimulationEvent {
         override val category: ScheduledCategory = ScheduledCategory.PAYLOAD_DELIVERY
     }

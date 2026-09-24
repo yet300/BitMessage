@@ -19,7 +19,7 @@
 ### Execution record (2026-09-05)
 
 - Tasks 1 and 2 are implemented and reviewed. SHA-256 coverage includes independently checked algorithm vectors at padding boundaries, binary input, and one million `a` bytes; packet fixtures remain codec-derived and non-normative.
-- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is committed at `e93994a` after specification and quality review: current-time quiescence, explicit advancement, predicate-bounded execution, real-node scheduling, and 12 focused quiescence tests pass on Android host and iOS Simulator ARM64. Task 9 passed final specification and quality review with 18 substrate tests and 55 total simulation tests per target; Task 10 mesh scenarios have not started.
+- Task 4 passed final specification and quality review at runtime commit `f778247448ce5e619dd14fce3a51615498856f96`: 26 acknowledgement tests and 93 total mesh tests on each of Android host and iOS Simulator ARM64, with a positive mesh gate. Task 5 is committed at `21a2c14` after eight timer-driver tests and the full Android/iOS mesh suite passed. Task 3 is committed at `7d8d77f` after eight queue/trace tests passed on both targets and a positive simulation gate. Task 6 is committed at `062508b` after 21 total simulation tests per target. Task 7 is committed at `9de33aa` after ten focused entropy/provider tests per target and passing simulation, protocol, and mesh suites. Task 8 is committed at `e93994a` after specification and quality review. Task 9 is committed at `7723c71` after final specification and quality review, with 18 substrate tests and 55 total simulation tests per target. Task 10's direct, three-node relay, and canonical Android scenarios pass the simulation, production compatibility, and mesh gates; Tasks 11–15 remain.
 - Execute Tasks 4 and 5 before Task 3: Task 3's `FireRuntimeTimer` references `MeshTimerKey`, which Task 5 introduces. Do not create a temporary duplicate key type.
 - Task 3 follows the plan's five initial event variants. Design 2 additionally names scheduled scenario actions: add a closed scenario-action event when that action type has a concrete consumer, and keep timed actions on the single global queue. `MESH_EVENT` is packet-network work because delayed digest/verification results can continue admission and relay; convergence must still inspect packet relevance and current-vs-future deadline rather than category alone.
 - Run focused `testAndroidHostTest --tests ...` commands separately from the unfiltered `meshEngineCheck`/`allTests` invocation. Combining the filter with the gate suppresses the required coverage anchor after the gate cleans its XML results.
@@ -1673,16 +1673,18 @@ rtk git commit -m "test: prove deterministic simulation substrate"
 
 ## Task 10: Add direct delivery and canonical three-node relay
 
+Implementation note: actual delivered wire, signature, and signing transcript are represented in snapshots only by SHA-256 hashes. Android integration tests load expected bytes and semantic fields from the existing canonical fixture manifest; common tests contain no canonical known-answer literals. The hostile `255 -> 6` check is explicitly local policy, while `7 -> 6` and the 256-byte transcript are fixture-backed.
+
 **Files:**
 - Modify: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/SimulationFixtures.kt`
 - Create: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/DirectAndRelayScenarioTest.kt`
 - Create: `transport/simulation/src/androidHostTest/kotlin/com/yet/bitmessage/transport/simulation/CanonicalMeshScenarioTest.kt`
 
-- [ ] **Step 1: Build non-normative packets only through production APIs.**
+- [x] **Step 1: Build non-normative packets only through production APIs.**
 
 `SimulationFixtures.messagePacket(ttl, payloadByte, timestamp)` constructs a `DecodedPacket` with a one-byte non-authoritative `RawPacket` sentinel, calls `BitchatCodec.encode`, then decodes the emitted bytes and returns that production-decoded packet. `fragmentPackets` uses `FragmentPayloadCodec.encode`. No common helper contains a canonical expected wire, digest, signing transcript, or relayed output literal.
 
-- [ ] **Step 2: Write common direct and unsigned relay tests.**
+- [x] **Step 2: Write common direct and unsigned relay tests.**
 
 ```kotlin
 class DirectAndRelayScenarioTest {
@@ -1722,19 +1724,19 @@ class DirectAndRelayScenarioTest {
 }
 ```
 
-- [ ] **Step 3: Run and observe the missing integration behavior.**
+- [x] **Step 3: Run and inspect integration behavior.**
 
 ```bash
 rtk ./gradlew :transport:simulation:testAndroidHostTest --tests '*DirectAndRelayScenarioTest' --console=plain
 ```
 
-Expected: failures identify any incomplete node publication, link mapping, relay timer, codec, or real digest wiring.
+Observed: both scenarios passed through the existing runtime, relay timer, codec, and real digest wiring.
 
-- [ ] **Step 4: Complete only the integration seams required by the tests.**
+- [x] **Step 4: Complete only the integration seams required by the tests.**
 
 Fix host publication routing, relay timer firing, direction lookup by `(sourceNode, LinkId)`, and typed write completion. Do not implement local send/delivery semantics: the initial A-to-B action remains an external transport injection; B-to-C is a real Phase 4 relay write.
 
-- [ ] **Step 5: Load canonical evidence in Android host tests.**
+- [x] **Step 5: Load canonical evidence in Android host tests.**
 
 `CanonicalMeshScenarioTest` loads the manifest exactly:
 
@@ -1758,7 +1760,7 @@ Add three tests:
 
 Read all semantic values from `CompatibilityFixture`; do not paste them into the test.
 
-- [ ] **Step 6: Run canonical, common, production compatibility, and mesh gates.**
+- [x] **Step 6: Run canonical, common, production compatibility, and mesh gates.**
 
 ```bash
 rtk ./gradlew \
