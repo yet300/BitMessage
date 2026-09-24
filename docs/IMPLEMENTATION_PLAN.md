@@ -1,6 +1,6 @@
 # BitMessage Implementation Plan
 
-Status: executable roadmap; Phases 0, 0.4, 1, 2, the evidence-first Phase 3 slice, and Phase 4 are complete; Phase 5 has not started
+Status: executable roadmap; Phases 0, 0.4, 1, 2, the evidence-first Phase 3 slice, Phase 4, and Phase 5 are complete; Phase 6 has not started
 Baseline date: 2026-08-07  
 Rule: every task leaves the repository buildable, tested and reviewable. No big-bang migration.
 
@@ -261,16 +261,16 @@ Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded
 ## 8. Phase 5 — Deterministic simulator
 
 - **Goal:** expose mesh design failures before BLE integration and feature growth.
-- **Scope:** multi-node simulated network, virtual time, MTU, readiness, latency, bandwidth, drop/duplicate/reorder/corrupt, partitions and replay traces.
+- **Scope:** multi-node simulated network, virtual time, MTU, readiness, latency, drop/duplicate/delay/corrupt, partitions and replay traces.
 - **Non-goals:** mocking Bluetooth framework quirks, performance benchmark, production crypto replacement.
 - **Dependencies:** Phase 4; Phase 7 scenarios extend it later.
-- **Modules affected:** new `:transport:simulation`, `:core:testing`.
-- **Core types/interfaces:** `SimulatedNode`, `SimulatedNetwork`, `FaultRule`, `Scenario`, `ScenarioTrace`.
-- **State owner:** simulator global queue; each node retains its own engine actors/repositories.
+- **Modules affected:** new `:transport:simulation`; `:core:testing` remains test-only.
+- **Core types/interfaces:** `SimulatedNode`, `SimulatedNetwork`, `FaultPlan`, `ScenarioAction`, `SimulationSnapshot`.
+- **State owner:** one simulator scheduled virtual-event queue; each node retains its own bounded `MeshRuntime` actor/effect queues.
 - **Platform responsibilities:** none.
-- **Tests:** deterministic seed replay, line/triangle, partition/heal, MTU/backpressure, shrinking and boundedness.
+- **Tests:** deterministic seed replay, line/triangle, partition/reconnect, MTU/backpressure, fragments, invalid authentication, relay loops, and boundedness; no shrinker.
 - **Compatibility gate:** simulator transports exact encoded baseline bytes through normal codec/engine path.
-- **Completion criteria:** required early scenarios pass and any failure emits one-command replay data; G4 begins.
+- **Completion criteria:** required early scenarios pass and generated failures retain explicit replay data; G4 begins.
 - **Risks:** simulator diverges from adapter semantics, fake crypto mistaken for crypto proof, nondeterministic test parallelism.
 - **Rollback:** additive test/simulation module.
 
@@ -281,7 +281,9 @@ Tasks 4.1–4.5 are complete. `:transport:api` contains protocol-neutral bounded
 | 5.1 | Virtual directed link network with MTU/readiness/latency. | 4.5 | transport:simulation | ordering and backpressure tests | Same Link API as production adapter. |
 | 5.2 | Seeded fault rules and partition/join/leave scripting. | 5.1 | simulation/testing | replay equality, rule bounds | Seed+scenario fully reproduces trace. |
 | 5.3 | Public line/triangle, duplicate and partition/heal scenarios. | 5.2 | scenario tests | G4 | No duplicate logical projection; convergence bounded. |
-| 5.4 | Scenario trace minimization and invariant DSL. | 5.3 | core:testing | failing-seed shrink test | Minimal replay artifact has no plaintext/secrets. |
+| 5.4 | Bounded replay diagnostics and generated invariants, without shrinking. | 5.3 | transport:simulation tests | 64 fixed seeds and replay equality | Explicit topology/actions/fault plan/seeds plus last 64 redacted trace records. |
+
+Tasks 5.1–5.4 are complete. Each simulated node runs the real Phase 4 engine/runtime and production protocol adapter; the simulator does not duplicate admission, relay, or fragment policy. Acknowledgement ends after the transition commits and effects are submitted, before asynchronous completion. Current-instant quiescence drains causal work without exhausting passive future maintenance timers; `advanceTo`/`advanceBy` move virtual time explicitly and bounded `runUntil` stops when its predicate becomes true. Compiled scenario actions join the single scheduled virtual-event queue; runtime mailboxes remain separate and bounded. Plan RNG and per-node protocol entropy are independent. Real SHA-256 computes ordinary packet IDs, with explicit digest overrides only for exceptional tests. Compatibility literals remain under `compatibility/`; general TTL cap 7 and hostile `255 -> 6` are local policy, not dual-upstream truth. No Bluetooth, Noise, persistence, Delivery, Sync, or Phase 6 work was started.
 
 ## 9. Phase 6 — BLE integration through BlueFalcon
 
@@ -647,7 +649,7 @@ A task is complete only when:
 
 ## 24. Completed work and next task
 
-The completed Phase 1–4 sequence is:
+The completed Phase 1–5 sequence is:
 
 1. **1.1 — Fixture schema and provenance: complete.**
 2. **1.2 — Dual-upstream minimal literal packet/announce fixtures: complete.**
@@ -663,5 +665,6 @@ The completed Phase 1–4 sequence is:
 12. **4.3 — Relay, jitter, and source-route policy: complete.** Entropy and timers are explicit effects; fallback fanout is deterministic and compatibility uncertainty is isolated.
 13. **4.4 — Fragment reassembly: complete.** Stream/count/byte quotas, expiry, duplicate/conflict semantics, and explicit full-pipeline reinjection are tested.
 14. **4.5 — Serialized runtime lifecycle: complete.** Constructor inertness, pre-reducer codec adaptation, structural-failure isolation, bounded pressure, ordering, timer cancellation, stop/restart generation, permanent close, and cancellation propagation are tested.
+15. **5.1–5.4 — Deterministic multi-node simulator: complete.** Real mesh runtimes traverse directed links under one bounded virtual event queue; explicit fault plans, current-time quiescence, canonical relay/fragment scenarios, exact replay, and 64 fixed generated seeds are covered. No shrinker or production crypto provider was added.
 
-**Next task: Phase 5 is not started.** Phase 4 provides no simulated or physical network, crypto implementation, persistence, reliable delivery, sync engine, media engine, or application composition.
+**Next task: Phase 6 has not started.** There is no physical Bluetooth network, production crypto implementation, persistence, reliable delivery, sync engine, media engine, or application composition.

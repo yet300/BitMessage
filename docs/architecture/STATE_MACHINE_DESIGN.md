@@ -1,6 +1,6 @@
 # Deterministic State-Machine Design
 
-Status: Phase 2 generic kernel and Phase 4 deterministic mesh reducer/runtime implemented; other engines remain future work
+Status: Phase 2 generic kernel, Phase 4 deterministic mesh reducer/runtime, and Phase 5 multi-node simulator implemented; other engines remain future work
 Scope: implemented foundation and mesh contracts plus future delivery/Noise/sync/media decisions; physical and platform adapters remain future effect executors.
 
 ## 1. Reducer contract
@@ -23,7 +23,7 @@ class Transition<S : Any, F : Any>(
 
 Phase 4 implements `Engine<MeshState, MeshEvent, MeshEffect>` as the first concrete reducer and `MeshRuntime` as its separate imperative shell. The reducer performs no I/O, clock/randomness read, coroutine launch, platform call, persistence, or service lookup. Test-only `VirtualScheduler` and non-cryptographic `SeededEntropy` remain separate deterministic infrastructure; production entropy and physical transport providers do not yet exist.
 
-The mesh material below records implemented Phase 4 behavior. Other engine and persistence material remains normative future design.
+The mesh material below records implemented Phase 4 behavior; Phase 5 simulation exercises it without a second mesh-policy implementation. Other engine and persistence material remains normative future design.
 
 ## 2. State ownership
 
@@ -160,6 +160,14 @@ Default limits are 32 links; 256 provisional observations (8/link); 256 pending 
 Local publication is independent of relay TTL. Received TTL 0 or 1 is not relayed. For other inputs the current outgoing TTL is `min(received, RelayPolicy.LOCAL_MAX_RECEIVED_TTL) - 1`, where the local cap is 7. Canonical dual-upstream evidence proves the concrete `7 -> 6` mutation, but not a universal maximum or `255 -> 6`; the cap is an explicit BitMessage-local resource policy. Relay targets exclude ingress, closed/not-ready links, and links whose maximum write size is too small. A unique source-route next-hop binding wins; otherwise eligible links are ordered by `LinkId.value` and capped by `maxRelayFanout`. Two supplied entropy bytes map to a deterministic `0..500 ms` delay. This fallback is intentionally conservative and is not a claim of exact Apple/Android fanout parity.
 
 Fragment payload metadata is decoded by `:protocol:bitchat`. Identical duplicate fragments are ignored without extending expiry. Metadata or byte conflicts destroy the stream. Completion assembles ascending indexes, removes the stream, and emits `ReinjectPacket` with `PacketSource.Reassembled`; the runtime protocol adapter decodes it and only a successful `PacketDecoded` traverses the normal admission/authentication path. Outer-fragment relay remains profile-blocked.
+
+### Phase 5 virtual network and quiescence
+
+`:transport:simulation` connects real per-node mesh runtimes through directed links and a single bounded scheduled virtual-event queue. Each runtime retains its own bounded mailbox/effect queues. `submitAndAwait` acknowledges only that the reducer transition committed and effects were registered/submitted; asynchronous digest, verification, timer, and link completions return as later explicit simulator events. The simulator fences causally submitted effects before selecting the next virtual deadline, so no coroutine scheduler polling, real sleep, or wall clock determines event order. Equal-deadline events follow insertion sequence.
+
+`runCurrentUntilQuiescent` drains same-time scheduled events, runtime mailboxes, committed transitions, effects, effect results, and newly created same-time work, without advancing time. `advanceTo` and `advanceBy` explicitly move time. Predicate-bounded `runUntil` may pass future deadlines until the scenario condition holds, then drains current-time consequences; passive future dedup, fragment, or route expiry timers are not a failure of relay-loop convergence. Event-count and virtual-duration budgets bound these operations.
+
+Explicit directed-link facts and `FaultPlan` model MTU, readiness, latency, loss, duplication, corruption, delayed completion, partition, and reconnect. A scenario RNG compiles topology, actions, faults, and per-node seeds before execution; no RNG runs during scenario dispatch. Simulation-only SHA-256 computes normal packet IDs from canonical Phase 4 identity bytes. Named `DigestPlan` overrides cover exceptional failures/collisions/stale results, not the happy path. Generated failures retain exact replay inputs and at most 64 redacted trace records; no shrinker is implemented. This module adds no Bluetooth, Noise, persistence, Delivery, Sync, or Phase 6 behavior.
 
 ### NoiseSessionEngine
 

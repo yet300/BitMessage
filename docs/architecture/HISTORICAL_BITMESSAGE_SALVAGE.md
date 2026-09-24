@@ -314,6 +314,15 @@ Phase 1 also promoted the historical admission-order finding into a mandatory Ph
 
 Add one newly discovered regression not encoded explicitly in the historical suite: deliver a forged signed-required packet, then the valid byte-identical packet. The forged packet must not poison dedup state and suppress the valid packet.
 
+### Phase 5 disposition of historical scenarios
+
+| Historical input | Phase 5 disposition | Boundary retained |
+|---|---|---|
+| `PacketRelayManagerScheduledTest` duplicate cancellation | `SALVAGE_TEST`: exercised with real mesh runtimes and bounded multi-node virtual time | The old relay manager remains rejected; no policy was copied into the simulator. |
+| `FragmentManager` reorder, conflict, and quota regressions | `SALVAGE_TEST`: generated and canonical fixture-backed network scenarios | The old manager remains rejected; production Phase 4 fragment policy is the only authority. |
+| Reconnect and late-result regressions | `SALVAGE_TEST`: partition/reconnect and stale-generation scenarios | The old runtime remains `REFERENCE_ONLY`; simulation dispatches through current `MeshRuntime`. |
+| Directed spool tests | Deferred to Phase 9 durable delivery | Phase 5 proves typed link pressure and no fake durable queue; it does not claim storage or retry-after-restart semantics. |
+
 ## 9. Code that should be deleted, not salvaged
 
 - Historical shared Compose UI and iOS Compose actual/stub surface.

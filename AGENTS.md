@@ -2,7 +2,7 @@
 
 ## Purpose and Current State
 
-BitMessage is an early-stage Kotlin Multiplatform application targeting Android and iOS. The repository currently provides application shells, shared logic, an Android Compose UI module, deterministic foundation/model/testing modules, a pure BitChat codec, transport-neutral link contracts, a bounded deterministic mesh reducer/runtime, reusable common utilities, and Gradle convention plugins.
+BitMessage is an early-stage Kotlin Multiplatform application targeting Android and iOS. The repository currently provides application shells, shared logic, an Android Compose UI module, deterministic foundation/model/testing modules, a pure BitChat codec, transport-neutral link contracts, a bounded deterministic mesh reducer/runtime, a deterministic multi-node simulator, reusable common utilities, and Gradle convention plugins.
 
 Do not infer a complete messenger from these foundations. Physical networking, persistence, cryptographic implementations, durable identity, delivery/sync/media engines, and final navigation are not implemented. Inspect the code and requirements before introducing them.
 
@@ -32,7 +32,8 @@ BitMessage/
 ├── protocol/
 │   └── bitchat/                Pure BitChat wire codec
 ├── transport/
-│   └── api/                    Transport-neutral link contracts
+│   ├── api/                    Transport-neutral link contracts
+│   └── simulation/             Virtual multi-node mesh network (test infrastructure)
 ├── engine/
 │   └── mesh/                   Deterministic mesh reducer and runtime
 ├── build-logic/
@@ -59,6 +60,7 @@ BitMessage/
 | `:protocol:bitchat` | Pure BitChat wire model and codec | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` and `:core:model`; test scope may depend on `:core:testing` |
 | `:transport:api` | Transport-neutral link observations, commands, capabilities, and typed results | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation` and `:core:model` |
 | `:engine:mesh` | Bounded deterministic mesh reducer and serialized runtime | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`, `:core:model`, `:protocol:bitchat`, and `:transport:api`; test scope may depend on `:core:testing` |
+| `:transport:simulation` | Deterministic, bounded multi-node link network around real mesh runtimes | Android, iOS ARM64, iOS Simulator ARM64; depends on `:core:foundation`, `:core:model`, `:protocol:bitchat`, `:transport:api`, and `:engine:mesh`; test scope may depend on `:core:testing` |
 | `build-logic:convention` | Shared Gradle configuration for multiplatform modules | Included build, not application runtime code |
 
 Current dependency direction:
@@ -71,6 +73,7 @@ compatibility fixtures -----------> core:testing -> core:foundation
 protocol:bitchat -----------------> core:foundation, core:model
 transport:api --------------------> core:foundation, core:model
 engine:mesh ----------------------> core:foundation, core:model, protocol:bitchat, transport:api
+transport:simulation -------------> core:foundation, core:model, protocol:bitchat, transport:api, engine:mesh
 ```
 
 Keep dependencies pointing inward along these paths unless a deliberate architecture change is requested. Production modules must not depend on `:core:testing`, and lower-level modules must not import application entry points or UI modules.
@@ -86,6 +89,7 @@ Keep dependencies pointing inward along these paths unless a deliberate architec
 - Put broadly reusable, UI-independent primitives in `core:common`. Do not turn it into a dumping ground for feature-specific behavior.
 - Put protocol-neutral link contracts in `transport/api`; keep BitChat types and physical adapter behavior out.
 - Put deterministic mesh state, reducer policy, and its serialized runtime in `engine/mesh`. The reducer remains pure; I/O, entropy, hashing, signature verification, timers, and publication cross typed effect boundaries.
+- Put virtual network orchestration, directed links, explicit fault plans, and simulation-only effect providers in `transport/simulation`; applications and `sharedLogic` must not depend on it.
 - Tests belong in the matching source set, normally `commonTest`, `androidHostTest`, or an iOS test source set.
 
 When adding `expect`/`actual`, keep the expected contract small and platform-neutral. Prefer common implementations when no platform API is required.
@@ -160,6 +164,9 @@ Run commands from the repository root with the checked-in Gradle wrapper.
 # Run transport contracts and require a non-zero Phase 4 mesh test
 ./gradlew :transport:api:allTests :engine:mesh:meshEngineCheck :engine:mesh:allTests
 
+# Run the Phase 5 multi-node simulator and require a non-zero coverage test
+./gradlew :transport:simulation:simulationCheck :transport:simulation:allTests
+
 # Link the shared framework for the iOS simulator
 ./gradlew :sharedLogic:linkDebugFrameworkIosSimulatorArm64
 
@@ -171,7 +178,7 @@ Run the narrowest relevant task first. For iOS application UI or signing changes
 
 ## Known Baseline Issues
 
-As of 2026-08-11, the version catalog sets `android-minSdk` to 26 and the documented Android/iOS framework build baseline is green. Phase 1 compatibility, Phase 2 foundation/model/testing, Phase 3 protocol, and Phase 4 transport/mesh tests execute on their configured targets. Dedicated `compatibilityCheck`, `productionCompatibilityCheck`, and `meshEngineCheck` tasks fail when their required coverage test count is zero. Other pre-existing module `allTests` tasks may remain `NO-SOURCE`; do not claim coverage without fresh test-result evidence.
+As of 2026-09-24, the version catalog sets `android-minSdk` to 26 and the documented Android/iOS framework build baseline is green. Phase 1 compatibility, Phase 2 foundation/model/testing, Phase 3 protocol, Phase 4 transport/mesh, and Phase 5 simulation tests execute on their configured targets. Dedicated `compatibilityCheck`, `productionCompatibilityCheck`, `meshEngineCheck`, and `simulationCheck` tasks fail when their required coverage test count is zero. Other pre-existing module `allTests` tasks may remain `NO-SOURCE`; do not claim coverage without fresh test-result evidence.
 
 ## Change Discipline
 
