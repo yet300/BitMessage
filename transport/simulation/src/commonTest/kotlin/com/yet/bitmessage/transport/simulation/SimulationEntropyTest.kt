@@ -36,6 +36,34 @@ class SimulationEntropyTest {
     private val nodeA = SimulatedNodeId.of("A")
 
     @Test
+    fun protocolEntropyHistoryHasALifetimeBoundWithoutChangingGeneratedBytes() {
+        val bounded = NodeProtocolEntropy(seed = 91)
+        val replay = NodeProtocolEntropy(seed = 91)
+        repeat(1_100) { index ->
+            val request = EntropyRequest(CorrelationId.of("entropy:$index"), 2)
+            assertEquals(replay.generate(request).bytes, bounded.generate(request).bytes)
+        }
+        assertTrue(bounded.transcript.size <= 1_024)
+        assertEquals(76L, bounded.droppedCount)
+        assertEquals(bounded.transcript, replay.transcript)
+    }
+
+    @Test
+    fun tinyEntropyHistoryDropsDiagnosticsAcrossRepeatedCallsWithoutChangingRandomness() {
+        val bounded = NodeProtocolEntropy(seed = 31, maximumRecords = 2, maximumBytes = 4)
+        val replay = NodeProtocolEntropy(seed = 31)
+        repeat(3) { call ->
+            repeat(4) { offset ->
+                val request = EntropyRequest(CorrelationId.of("entropy:${call * 4 + offset}"), 2)
+                assertEquals(replay.generate(request).bytes, bounded.generate(request).bytes)
+            }
+            assertTrue(bounded.transcript.size <= 2)
+        }
+        assertEquals(10L, bounded.droppedCount)
+        assertEquals(replay.transcript.take(2), bounded.transcript)
+    }
+
+    @Test
     fun simulationPlanRandomnessDoesNotChangeNodeProtocolEntropy() {
         val first = NodeProtocolEntropy(seed = 91)
         val second = NodeProtocolEntropy(seed = 91)
@@ -215,6 +243,8 @@ class SimulationEntropyTest {
             host = host,
             timerDriverFactory = MeshTimerDriverFactory { NoopTimerDriver },
             maximumPublications = 1,
+            maximumEntropyRecords = 2,
+            maximumEntropyBytes = 4,
         )
 
         assertEquals(StartResult.Started, node.start(MonotonicTime.ZERO))

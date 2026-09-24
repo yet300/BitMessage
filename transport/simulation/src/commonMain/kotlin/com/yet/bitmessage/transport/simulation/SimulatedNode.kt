@@ -36,6 +36,7 @@ data class SimulatedNodeSnapshot(
     val state: MeshState,
     val publications: List<PublicationProjection>,
     val entropyTranscript: List<ProtocolEntropyRecord>,
+    val entropyTranscriptDroppedCount: Long,
     val structuralDecodeRejections: Long,
 )
 
@@ -72,9 +73,11 @@ class SimulatedNode internal constructor(
     host: SimulationEffectHost,
     timerDriverFactory: MeshTimerDriverFactory,
     maximumPublications: Int,
+    maximumEntropyRecords: Int,
+    maximumEntropyBytes: Int,
 ) {
     private val publications = BoundedPublications(maximumPublications)
-    private val entropy = NodeProtocolEntropy(config.protocolSeed)
+    private val entropy = NodeProtocolEntropy(config.protocolSeed, maximumEntropyRecords, maximumEntropyBytes)
     private val executor = SimulationEffectExecutor(
         config.id,
         host,
@@ -114,6 +117,7 @@ class SimulatedNode internal constructor(
         state = requireNotNull(runtime.state.value) { "Simulated node has not started." },
         publications = publications.snapshot(),
         entropyTranscript = entropy.transcript,
+        entropyTranscriptDroppedCount = entropy.droppedCount,
         structuralDecodeRejections = runtime.structuralDecodeRejectionCount.value,
     )
 }

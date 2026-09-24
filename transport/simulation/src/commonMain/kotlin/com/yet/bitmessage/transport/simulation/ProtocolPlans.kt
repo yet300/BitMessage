@@ -19,9 +19,20 @@ data class ProtocolEntropyRecord(
 )
 
 /** Node-local protocol randomness; scenario compilation has a separate random stream. */
-class NodeProtocolEntropy(seed: Int) : EntropySource {
+class NodeProtocolEntropy(
+    seed: Int,
+    private val maximumRecords: Int = SimulationLimits().maxEntropyTranscriptRecords,
+    private val maximumBytes: Int = SimulationLimits().maxEntropyTranscriptBytes,
+) : EntropySource {
+    init {
+        require(maximumRecords > 0 && maximumBytes > 0)
+    }
+
     private val random = Random(seed)
     private val mutableTranscript = mutableListOf<ProtocolEntropyRecord>()
+    private var retainedBytes: Int = 0
+    var droppedCount: Long = 0
+        private set
 
     val transcript: List<ProtocolEntropyRecord>
         get() = mutableTranscript.toList()
@@ -30,7 +41,12 @@ class NodeProtocolEntropy(seed: Int) : EntropySource {
         val generated = ByteArray(request.byteCount)
         random.nextBytes(generated)
         val owned = Bytes.copyOf(generated)
-        mutableTranscript += ProtocolEntropyRecord(request.correlationId, request.byteCount, owned)
+        if (mutableTranscript.size < maximumRecords && owned.size <= maximumBytes - retainedBytes) {
+            mutableTranscript += ProtocolEntropyRecord(request.correlationId, request.byteCount, owned)
+            retainedBytes += owned.size
+        } else if (droppedCount < Long.MAX_VALUE) {
+            droppedCount += 1
+        }
         return EntropyGenerated(request.correlationId, owned)
     }
 }

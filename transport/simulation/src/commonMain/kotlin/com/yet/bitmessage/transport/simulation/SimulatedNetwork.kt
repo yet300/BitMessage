@@ -115,6 +115,8 @@ class SimulatedNetwork(
                 host = effectHost,
                 timerDriverFactory = MeshTimerDriverFactory { NetworkTimerDriver(config.id) },
                 maximumPublications = limits.maxPublicationRecords,
+                maximumEntropyRecords = limits.maxEntropyTranscriptRecords,
+                maximumEntropyBytes = limits.maxEntropyTranscriptBytes,
             ).also { nodes[config.id] = it }
         }
         try {
