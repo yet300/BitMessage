@@ -5,6 +5,8 @@ import com.yet.bitmessage.engine.mesh.runtime.MeshEffectExecutor
 import com.yet.bitmessage.engine.mesh.runtime.executeEffect
 import com.yet.bitmessage.foundation.Generation
 import com.yet.bitmessage.foundation.TimerId
+import com.yet.bitmessage.protocol.bitchat.PacketId
+import com.yet.bitmessage.protocol.bitchat.RelayEncoding
 import com.yet.bitmessage.transport.api.LinkCommand
 import com.yet.bitmessage.transport.api.LinkEvent
 import com.yet.bitmessage.transport.api.LinkCloseReason
@@ -36,6 +38,24 @@ class PendingLinkWriteTest {
         val result = MeshEngine().reduce(state, requireNotNull(failure))
         assertTrue(result.state.pendingLinkWrites.isEmpty())
         assertTrue(result.state.links[MeshFixtures.linkB]?.capabilities?.writeReady == true)
+        assertEquals(MeshFixtures.linkB, nextWrite(result.state).command.linkId)
+    }
+
+    private fun nextWrite(state: MeshState): MeshEffect.WriteLink {
+        val packet = MeshFixtures.broadcastPacket
+        val packetId = PacketId.of(MeshFixtures.bytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+        val encodeCorrelation = CorrelationId.of("encode-after-failure")
+        val targets = SnapshotList(listOf(MeshFixtures.linkB))
+        val readyForNextRelay = state.copy(
+            pendingRelayEncodes = SnapshotMap(mapOf(encodeCorrelation to PendingRelayEncode(
+                packetId, packet.sender, packet, targets, expiry,
+            ))),
+        )
+        val next = MeshEngine().reduce(readyForNextRelay, MeshEvent.RelayEncoded(
+            encodeCorrelation, MeshFixtures.generation, MeshFixtures.now, packetId, targets,
+            RelayEncoding.withTtl(packet, 1u),
+        ))
+        return next.effects.filterIsInstance<MeshEffect.WriteLink>().single()
     }
 
     @Test
@@ -60,6 +80,7 @@ class PendingLinkWriteTest {
         val expired = engine.reduce(pendingState(), MeshEvent.TimerElapsed(correlation, MeshFixtures.generation, expiry, timeout))
         assertTrue(expired.state.pendingLinkWrites.isEmpty())
         assertTrue(expired.state.links.containsKey(MeshFixtures.linkB))
+        assertEquals(MeshFixtures.linkB, nextWrite(expired.state).command.linkId)
         val late = engine.reduce(expired.state, completed())
         assertEquals(expired.state, late.state)
     }
