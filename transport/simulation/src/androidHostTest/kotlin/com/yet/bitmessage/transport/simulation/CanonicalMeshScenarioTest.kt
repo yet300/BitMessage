@@ -8,6 +8,10 @@ import com.yet.bitmessage.protocol.bitchat.EncodeResult
 import com.yet.bitmessage.protocol.bitchat.PacketIdentity
 import com.yet.bitmessage.protocol.bitchat.RelayEncoding
 import com.yet.bitmessage.protocol.bitchat.SigningTranscript
+import com.yet.bitmessage.protocol.bitchat.FragmentPayload
+import com.yet.bitmessage.protocol.bitchat.FragmentPayloadCodec
+import com.yet.bitmessage.protocol.bitchat.PacketType
+import com.yet.bitmessage.protocol.bitchat.KnownPacketType
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
 import com.yet.bitmessage.testing.compatibility.CompatibilityFixture
 import com.yet.bitmessage.testing.compatibility.FixtureManifestParser
@@ -86,6 +90,46 @@ class CanonicalMeshScenarioTest {
         assertEquals(relayedTtl, hostileRelay.ttl)
         assertEquals(SimulationSha256.digest(expectedWire), hostileRelay.wireSha256)
         assertEquals(canonicalRelay.signingTranscriptSha256, hostileRelay.signingTranscriptSha256)
+    }
+
+    @Test
+    fun canonicalFragmentPayloadsReassembleThroughRealMeshAdmission() = runTest {
+        val evidence = fixture("apple-phase4-fragment-reassembly")
+        val firstPayload = bytes(evidence.wireBytesHex)
+        val secondPayload = bytes(evidence.semantic("fragmentOneHex"))
+        val first = assertIs<DecodeResult.Success<FragmentPayload>>(
+            FragmentPayloadCodec.decode(firstPayload),
+        ).value
+        val second = assertIs<DecodeResult.Success<FragmentPayload>>(
+            FragmentPayloadCodec.decode(secondPayload),
+        ).value
+        assertEquals(firstPayload,
+            assertIs<EncodeResult.Success>(FragmentPayloadCodec.encode(first)).bytes)
+        assertEquals(secondPayload,
+            assertIs<EncodeResult.Success>(FragmentPayloadCodec.encode(second)).bytes)
+        val inner = bytes(evidence.semantic("reassembledWireBytesHex"))
+        assertEquals(inner, Bytes.copyOf(first.data.copyToByteArray() + second.data.copyToByteArray()))
+
+        val network = SimulatedNetwork(backgroundScope)
+        network.addNode(SimulatedNodeConfig(nodeA, peer(1), protocolSeed = 11))
+        network.addNode(SimulatedNodeConfig(nodeB, peer(11), protocolSeed = 22))
+        network.connect(SimulatedConnection.create("ab", nodeA, nodeB, 4_096, 100.milliseconds))
+        val type = PacketType.of(KnownPacketType.FRAGMENT.value)
+        network.injectTransportWrite(SimulatedLinkId.of("ab:a-to-b"),
+            SimulationFixtures.decodeOnlyOuterPacket(type, secondPayload, timestamp = 2u))
+        network.injectTransportWrite(SimulatedLinkId.of("ab:a-to-b"),
+            SimulationFixtures.decodeOnlyOuterPacket(type, firstPayload, timestamp = 1u))
+        val reached = assertIs<RunUntilResult.Reached>(network.runUntil(
+            predicate = { it.node(nodeB).publications.size == 1 },
+            maxProcessedEvents = 10_000,
+            maxVirtualDuration = 30.seconds,
+        ))
+        val innerId = PacketIdentity.fromSha256(
+            SimulationSha256.digest(PacketIdentity.input(decoded(inner)).canonicalBytes),
+        )
+        assertEquals(listOf(innerId), reached.snapshot.node(nodeB).publications.map { it.packetId })
+        assertTrue(innerId in reached.snapshot.node(nodeB).state.admittedPackets)
+        network.close()
     }
 
     private suspend fun TestScope.runSignedLine(input: Bytes): SimulationSnapshot {

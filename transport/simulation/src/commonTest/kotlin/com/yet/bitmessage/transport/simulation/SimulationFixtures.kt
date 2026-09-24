@@ -13,6 +13,9 @@ import com.yet.bitmessage.protocol.bitchat.PacketType
 import com.yet.bitmessage.protocol.bitchat.PacketVersion
 import com.yet.bitmessage.protocol.bitchat.RawPacket
 import com.yet.bitmessage.protocol.bitchat.SigningTranscript
+import com.yet.bitmessage.protocol.bitchat.FragmentId
+import com.yet.bitmessage.protocol.bitchat.FragmentPayload
+import com.yet.bitmessage.protocol.bitchat.FragmentPayloadCodec
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
 import kotlin.test.assertIs
 
@@ -59,4 +62,44 @@ internal object SimulationFixtures {
     }
 
     private const val SIGNATURE_BYTES = 64
+
+    /** Wraps a known decode-only type using a production-encoded v2 header of the same payload length. */
+    fun decodeOnlyOuterPacket(
+        type: PacketType,
+        payload: Bytes,
+        ttl: UByte = 0u,
+        timestamp: ULong = 42u,
+    ): Bytes {
+        val emitted = messagePacket(ttl = ttl, payload = payload, timestamp = timestamp)
+        val wire = emitted.rawPacket.wireBytes.copyToByteArray()
+        wire[Byte.SIZE_BYTES] = type.value.toByte()
+        val candidate = Bytes.copyOf(wire)
+        val decoded = assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(candidate)).value
+        require(decoded.type == type && decoded.payload == payload)
+        return candidate
+    }
+
+    fun fragmentOuterWires(innerWire: Bytes, fragmentBytes: Int, streamOrdinal: Int = 1): List<Bytes> {
+        require(fragmentBytes > 0 && streamOrdinal >= 0)
+        val inner = assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(innerWire)).value
+        val raw = innerWire.copyToByteArray()
+        val total = (raw.size + fragmentBytes - 1) / fragmentBytes
+        require(total in 1..UShort.MAX_VALUE.toInt())
+        val id = FragmentId.of(Bytes.copyOf(ByteArray(FragmentId.BYTE_SIZE) { index ->
+            (streamOrdinal + index).toByte()
+        }))
+        return (0 until total).map { index ->
+            val begin = index * fragmentBytes
+            val end = minOf(raw.size, begin + fragmentBytes)
+            val payload = assertIs<EncodeResult.Success>(FragmentPayloadCodec.encode(FragmentPayload(
+                id = id,
+                index = index.toUShort(),
+                total = total.toUShort(),
+                originalType = inner.type,
+                data = Bytes.copyOf(raw.copyOfRange(begin, end)),
+            ))).bytes
+            decodeOnlyOuterPacket(PacketType.of(KnownPacketType.FRAGMENT.value), payload,
+                timestamp = (100 + index).toULong())
+        }
+    }
 }
