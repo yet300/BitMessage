@@ -136,7 +136,8 @@ internal fun reduceEntropy(
         outgoingTtl = request.outgoingTtl,
         correlationId = issued.correlationId,
         timerId = timerId,
-        expiresAt = event.observedAt.plus(delay),
+        dueAt = event.observedAt.plus(delay),
+        validUntil = requireNotNull(issued.state.admittedPackets[request.packetId]).expiresAt,
     )
     val relays = issued.state.scheduledRelays.toMutableMap().apply {
         put(request.packetId, relay)
@@ -169,8 +170,15 @@ internal fun reduceRelayTimerOrNull(
     val relay = state.scheduledRelays.values.firstOrNull {
         it.correlationId == event.correlationId && it.timerId == event.timerId
     } ?: return null
-    if (event.observedAt < relay.expiresAt) {
+    if (event.observedAt < relay.dueAt) {
         return ignoredRelay(state, event.correlationId, stale = false)
+    }
+    if (event.observedAt >= relay.validUntil) {
+        return ignoredRelay(
+            state.copy(scheduledRelays = SnapshotMap(state.scheduledRelays - relay.packetId)),
+            event.correlationId,
+            stale = false,
+        )
     }
 
     val relays = state.scheduledRelays.toMutableMap().apply { remove(relay.packetId) }
@@ -187,7 +195,7 @@ internal fun reduceRelayTimerOrNull(
                 sourcePeer = relay.sourcePeer,
                 packet = relay.packet,
                 targets = relay.targets,
-                expiresAt = state.admittedPackets[relay.packetId]?.expiresAt ?: relay.expiresAt,
+                expiresAt = relay.validUntil,
             ),
         )
     }

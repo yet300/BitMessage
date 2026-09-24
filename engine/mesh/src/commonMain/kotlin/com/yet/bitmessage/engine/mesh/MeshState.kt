@@ -149,7 +149,8 @@ data class ScheduledRelay(
     val outgoingTtl: UByte,
     val correlationId: CorrelationId,
     val timerId: TimerId,
-    val expiresAt: MonotonicTime,
+    val dueAt: MonotonicTime,
+    val validUntil: MonotonicTime,
 )
 
 data class PendingRelayEntropy(
@@ -275,7 +276,7 @@ internal fun MeshState.prepareForCapacity(observedAt: MonotonicTime): MeshState 
             routeObservations.filterValues { it.expiresAt > observedAt },
         ),
         scheduledRelays = SnapshotMap(
-            scheduledRelays.filterValues { it.expiresAt > observedAt },
+            scheduledRelays.filterValues { it.validUntil > observedAt },
         ),
         pendingRelayEntropy = SnapshotMap(relayEntropy),
         pendingRelayEncodes = SnapshotMap(relayEncodes),

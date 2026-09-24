@@ -545,6 +545,42 @@ class RelayPolicyTest {
         assertEquals(0, encoded.state.aggregateRelayRetainedBytes)
     }
 
+    @Test
+    fun unrelatedEventAtRelayDeadlineDoesNotConsumeItsTimer() {
+        val engine = MeshEngine()
+        val admitted = admitUnsigned(engine, readyStateWithRelayLink(engine), packetWithTtl(3u))
+        val scheduled = engine.reduce(admitted.state, entropyResult(admitted.entropyRequest(), bytes("0000")))
+        val timer = scheduled.effects.filterIsInstance<MeshEffect.Schedule>().single()
+        val unrelated = engine.reduce(scheduled.state, MeshEvent.LinkObserved(
+            MeshFixtures.generation, MeshFixtures.now,
+            LinkEvent.Opened(MeshFixtures.linkB, LinkCapabilities(4096, true)),
+        ))
+        val due = engine.reduce(unrelated.state, MeshEvent.TimerElapsed(
+            timer.correlationId, timer.generation, MeshFixtures.now, timer.timerId,
+        ))
+        assertEquals(1, due.effects.filterIsInstance<MeshEffect.EncodeRelay>().size)
+        assertTrue(engine.reduce(due.state, MeshEvent.TimerElapsed(
+            timer.correlationId, timer.generation, MeshFixtures.now, timer.timerId,
+        )).effects.none { it is MeshEffect.EncodeRelay })
+    }
+
+    @Test
+    fun lateRelayTimerExecutesBeforeSemanticExpiryButNotAfterIt() {
+        val engine = MeshEngine()
+        val admitted = admitUnsigned(engine, readyStateWithRelayLink(engine), packetWithTtl(3u))
+        val scheduled = engine.reduce(admitted.state, entropyResult(admitted.entropyRequest(), bytes("0000")))
+        val timer = scheduled.effects.filterIsInstance<MeshEffect.Schedule>().single()
+        val late = engine.reduce(scheduled.state, MeshEvent.TimerElapsed(
+            timer.correlationId, timer.generation, MeshFixtures.now.plus(1.minutes), timer.timerId,
+        ))
+        assertEquals(1, late.effects.filterIsInstance<MeshEffect.EncodeRelay>().size)
+        val expired = engine.reduce(scheduled.state, MeshEvent.TimerElapsed(
+            timer.correlationId, timer.generation, MeshFixtures.now.plus(5.minutes), timer.timerId,
+        ))
+        assertTrue(expired.effects.none { it is MeshEffect.EncodeRelay })
+        assertTrue(expired.state.scheduledRelays.isEmpty())
+    }
+
     private data class RelayWrite(
         val state: MeshState,
         val write: MeshEffect.WriteLink,
@@ -630,7 +666,8 @@ class RelayPolicyTest {
             outgoingTtl = 2u,
             correlationId = correlationId,
             timerId = TimerId.of("${correlationId.value}:relay"),
-            expiresAt = MeshFixtures.now.plus(1.minutes),
+            dueAt = MeshFixtures.now.plus(1.minutes),
+            validUntil = MeshFixtures.now.plus(5.minutes),
         )
     }
 
