@@ -1787,12 +1787,14 @@ Expected: compatibility diff and literal search are empty.
 
 ## Task 11: Prove duplicate, TTL, and invalid-auth admission invariants
 
+Implementation note: `signedMessageWire` is generated from the production encoder and then immediately decoded; its signature bytes are test-only input, never a normative known answer. The 32 invalid verification requests fail closed, and the 33rd valid request is explicitly planned. The tests assert only the valid packet ID is admitted and published.
+
 **Files:**
 - Modify: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/SimulationFixtures.kt`
 - Modify: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/DirectAndRelayScenarioTest.kt`
 - Create: `transport/simulation/src/commonTest/kotlin/com/yet/bitmessage/transport/simulation/AdmissionAttackScenarioTest.kt`
 
-- [ ] **Step 1: Add duplicate-path and TTL tests before changing simulator code.**
+- [x] **Step 1: Add duplicate-path and TTL tests before changing simulator code.**
 
 ```kotlin
 @Test
@@ -1831,11 +1833,11 @@ fun ttlZeroAndOnePublishLocallyWithoutRelayAndHostileValueUsesLocalCap() = runTe
 }
 ```
 
-- [ ] **Step 2: Add a generated non-normative signed test helper.**
+- [x] **Step 2: Add a generated non-normative signed test helper.**
 
 Because the production profile deliberately refuses to emit signatures before a production signer exists, `SimulationFixtures.signedMessageWire` is a test-input builder, not a compatibility authority. It starts from `BitchatCodec.encode` output, derives the v2 flag position from named fixed header field sizes, sets `PacketFlags.SIGNATURE_BIT`, appends an exact 64-byte test signature, and immediately requires `BitchatCodec.decode` plus `SigningTranscript.build` to succeed. No expected wire or transcript literal is stored or asserted. Canonical signed behavior remains in Task 10's Android fixture test.
 
-- [ ] **Step 3: Write the multi-node invalid-auth poisoning scenario.**
+- [x] **Step 3: Write the multi-node invalid-auth poisoning scenario.**
 
 ```kotlin
 class AdmissionAttackScenarioTest {
@@ -1871,7 +1873,7 @@ class AdmissionAttackScenarioTest {
 
 Use wire payload/timestamp variation so packet identity inputs are unique. Verification outcomes are explicit by request ordinal; no randomness chooses validity.
 
-- [ ] **Step 4: Run and observe failures before any necessary integration fix.**
+- [x] **Step 4: Run and inspect integration behavior.**
 
 ```bash
 rtk ./gradlew \
@@ -1880,9 +1882,9 @@ rtk ./gradlew \
   --console=plain
 ```
 
-Expected: tests either pass entirely through existing Phase 4 policy or expose only simulator ordering/diagnostic bugs. Do not change mesh admission/dedup/TTL policy to satisfy them.
+Observed: tests pass entirely through existing Phase 4 admission, dedup, and TTL policy. No mesh-policy or simulator fix was needed.
 
-- [ ] **Step 5: Fix simulator-only defects and run all targets.**
+- [x] **Step 5: Run all targets and the mesh gate.**
 
 Any correction is limited to preserving per-write ordinals, stable direction mapping, explicit verification outcomes, or projections. If a production invariant fails, first reproduce it in `:engine:mesh` and stop for review rather than duplicating a workaround in simulation.
 

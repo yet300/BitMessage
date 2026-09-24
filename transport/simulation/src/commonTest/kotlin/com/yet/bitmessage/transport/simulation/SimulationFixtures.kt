@@ -12,6 +12,7 @@ import com.yet.bitmessage.protocol.bitchat.PacketIdentityInput
 import com.yet.bitmessage.protocol.bitchat.PacketType
 import com.yet.bitmessage.protocol.bitchat.PacketVersion
 import com.yet.bitmessage.protocol.bitchat.RawPacket
+import com.yet.bitmessage.protocol.bitchat.SigningTranscript
 import com.yet.bitmessage.protocol.bitchat.WirePeerId
 import kotlin.test.assertIs
 
@@ -43,4 +44,19 @@ internal object SimulationFixtures {
     }
 
     val broadcastIdentityInput: PacketIdentityInput = PacketIdentity.input(messagePacket())
+
+    /** Generated decode-only signed input; no expected wire or transcript literal is asserted here. */
+    fun signedMessageWire(payloadByte: Byte, timestamp: ULong = payloadByte.toUByte().toULong()): Bytes {
+        val unsigned = messagePacket(payload = Bytes.copyOf(byteArrayOf(payloadByte)), timestamp = timestamp)
+        val wire = unsigned.rawPacket.wireBytes.copyToByteArray()
+        val flagsOffset = Byte.SIZE_BYTES * 3 + ULong.SIZE_BYTES
+        wire[flagsOffset] = (wire[flagsOffset].toUByte().toUInt() or PacketFlags.SIGNATURE_BIT).toByte()
+        val signature = ByteArray(SIGNATURE_BYTES) { index -> (payloadByte.toInt() + index).toByte() }
+        val signed = Bytes.copyOf(wire + signature)
+        val decoded = assertIs<DecodeResult.Success<DecodedPacket>>(BitchatCodec.decode(signed)).value
+        assertIs<DecodeResult.Success<Bytes>>(SigningTranscript.build(decoded))
+        return signed
+    }
+
+    private const val SIGNATURE_BYTES = 64
 }

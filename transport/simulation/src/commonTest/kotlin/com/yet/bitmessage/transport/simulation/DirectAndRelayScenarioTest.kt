@@ -53,6 +53,49 @@ class DirectAndRelayScenarioTest {
         network.close()
     }
 
+    @Test
+    fun sameAuthenticatedPacketAcrossSameAndDifferentIngressLinksPublishesOnce() = runTest {
+        val network = lineNetwork(includeC = true)
+        network.connect(SimulatedConnection.create("cb", c, b, 4_096, 100.milliseconds))
+        val wire = SimulationFixtures.messagePacket(ttl = 3u).rawPacket.wireBytes
+        network.injectTransportWrite(ab, wire)
+        network.injectTransportWrite(ab, wire)
+        network.injectTransportWrite(SimulatedLinkId.of("cb:a-to-b"), wire)
+
+        val reached = assertIs<RunUntilResult.Reached>(network.runUntil(
+            predicate = { snapshot -> snapshot.deliveries.count { it.targetNode == b } == 3 },
+            maxProcessedEvents = 5_000,
+            maxVirtualDuration = 5.seconds,
+        ))
+        val receiver = reached.snapshot.node(b)
+        assertEquals(1, receiver.publications.size)
+        assertEquals(1, receiver.state.admittedPackets.size)
+        assertTrue(receiver.state.pendingAdmissions.isEmpty())
+        network.close()
+    }
+
+    @Test
+    fun ttlZeroAndOnePublishLocallyWithoutRelayAndHostileValueUsesLocalCap() = runTest {
+        for (ttl in listOf(0u.toUByte(), 1u.toUByte())) {
+            val network = lineNetwork(includeC = true)
+            network.injectTransportWrite(ab, SimulationFixtures.messagePacket(ttl = ttl).rawPacket.wireBytes)
+            network.advanceBy(1.seconds)
+            assertEquals(1, network.snapshot().node(b).publications.size)
+            assertTrue(network.snapshot().node(c).publications.isEmpty())
+            network.close()
+        }
+
+        val hostile = lineNetwork(includeC = true)
+        hostile.injectTransportWrite(ab, SimulationFixtures.messagePacket(ttl = 255u).rawPacket.wireBytes)
+        val reached = assertIs<RunUntilResult.Reached>(hostile.runUntil(
+            predicate = { it.node(c).publications.size == 1 },
+            maxProcessedEvents = 5_000,
+            maxVirtualDuration = 30.seconds,
+        ))
+        assertEquals(6u.toUByte(), reached.snapshot.deliveries.single { it.targetNode == c }.ttl)
+        hostile.close()
+    }
+
     private suspend fun TestScope.lineNetwork(includeC: Boolean): SimulatedNetwork =
         SimulatedNetwork(backgroundScope).also { network ->
             network.addNode(SimulatedNodeConfig(a, peer(1), protocolSeed = 11))
